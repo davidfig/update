@@ -185,6 +185,14 @@ function add(funct, time, params)
             percentageList['Other'] = {current: 0, amounts: []};
         }
         percentageList[params.percent] = {current: 0, amounts: []};
+        var test = '';
+        for (var key in percentageList)
+        {
+            test += key + ': --%<br>';
+        }
+        test += 'Other: --';
+        debugOne(test, {panel: 'percentages'});
+        Debug.resize();
     }
     return update;
 }
@@ -353,7 +361,6 @@ function debugPercent(other)
     change.amounts[change.current++] = other;
     change.current %= rollingAverage;
     var updates = [], all = 0;
-var count = 0;
     for (var name in percentageList)
     {
         var change = percentageList[name];
@@ -373,10 +380,7 @@ var count = 0;
         result += update.name + ': ' + Math.round(update.total / all * 100) + '%<br>';
     }
     var update = updates[0];
-    if (update.total)
-    {
-        result += update.name + ': ' + Math.round(update.total / all * 100) + '%<br>';
-    }
+    result += update.name + ': ' + Math.round(update.total / all * 100) + '%<br>';
     debugOne(result, {panel: panels.percent});
 }
 
