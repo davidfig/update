@@ -191,7 +191,7 @@ function add(funct, time, params)
             test += key + ': --%<br>';
         }
         test += 'Other: --';
-        debugOne(test, {panel: 'percentages'});
+        debugOne(test, {name: 'percentages'});
         Debug.resize();
     }
     return update;
