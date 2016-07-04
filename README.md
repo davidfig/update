@@ -51,6 +51,13 @@ include update.js in your project or add to your workflow
 ## Example
 https://davidfig.github.io/update/
 
+see also
+
+* https://davidfig.github.io/debug/
+* https://davidfig.github.io/animate/
+* https://davidfig.github.io/renderer/
+* https://davidfig.github.io/viewport/
+
 ## API Reference
 
 ### Update.init()
