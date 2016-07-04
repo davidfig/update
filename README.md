@@ -3,6 +3,25 @@ update loop API for javascript apps. Works well with https://github.com/davidfig
 
 ## Code Example
 
+        // initialize debug panels to track progress
+        Debug.init();
+        var random = Debug.add('random', {text: '0'});
+
+        // initialize update loop
+        Update.init();
+
+        // add a call to testRandom every 100 MS and track it in Random Numbers debug panel
+        Update.add(testRandom, 100, {percent: 'Random Numbers'});
+
+        // add a call to testPI every update and track it in PI Calculation debug panel
+        Update.add(testPI, null, {percent: 'PI Calculation'});
+
+        // add a call to testDelay (tracked automatically in Other debug panel)
+        Update.add(testDelay);
+
+        // start update loop
+        Update.update();
+
         function testRandom()
         {
             debugOne(Math.random(), {panel: random});
@@ -23,27 +42,6 @@ update loop API for javascript apps. Works well with https://github.com/davidfig
             }
             return test;
         }
-
-        // initialize the debug panels
-        Debug.init();
-
-        // add a random panel
-        var random = Debug.add('random', {text: '0'});
-
-        // initialize the update library
-        Update.init();
-
-        // add a call at 100ms to testRandom()
-        Update.add(testRandom, 100, {percent: 'Random Numbers'});
-
-        // add a call every update to testPI()
-        Update.add(testPI, null, {percent: 'PI Calculation'});
-
-        // add a call every update to testDelay() -- debug percentage is captured in Other category
-        Update.add(testDelay);
-
-        // start update clock
-        Update.update();
 
 ## Installation
 include update.js in your project or add to your workflow
