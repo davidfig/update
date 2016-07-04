@@ -23,6 +23,7 @@ var maxChange = 100;
 
 var panels = {fps: null, meter: null, percent: null};
 var percentageList = [];
+var lastCount;
 
 // this creates a rolling average using 500 entries to smooth the debug percentages
 var rollingAverage = 500;
@@ -91,7 +92,7 @@ function fpsReset()
 function updateOther(elapsed)
 {
     var i = 0, _i = list.length;
-    var total = 0, other = 0, updates = [];
+    var total = 0, other = 0, updates = [], count = 0;
     while (i < _i)
     {
         var update = list[i++];
@@ -120,11 +121,11 @@ function updateOther(elapsed)
                 update.elapsed = 0;
             }
         }
-        var start;
+        var start, result;
         if (Debug && panels.percent)
         {
             start = performance.now();
-            update.callback(elapsed, update.params);
+            result = update.callback(elapsed, update.params);
             current = performance.now() - start;
             if (update.params.percent)
             {
@@ -143,18 +144,27 @@ function updateOther(elapsed)
         }
         else
         {
-            update.callback(elapsed, update.params);
+            result = update.callback(elapsed, update.params);
         }
-        if (update.once)
+        if (update.once || result)
         {
             i--;
             _i--;
             list.splice(i, 1);
         }
+        count++;
     }
-    if (Debug && panels.percent)
+    if (Debug)
     {
-        debugPercent(other);
+        if (lastCount !== count)
+        {
+            debugOne(count + ' updates', {panel: panels.count});
+            lastCount = count;
+        }
+        if (panels.percent)
+        {
+            debugPercent(other);
+        }
     }
 }
 
@@ -321,6 +331,7 @@ function debugInit()
 {
     panels.fps = Debug.add('FPS', {text: '-- FPS'});
     panels.meter = Debug.addMeter('panel');
+    panels.count = Debug.add('Updates', {text: '0 updates'});
 }
 
 function debugPause()
@@ -383,7 +394,6 @@ function debugPercent(other)
     result += update.name + ': ' + Math.round(update.total / all * 100) + '%<br>';
     debugOne(result, {panel: panels.percent});
 }
-
 
 // exports
 var Update = {
