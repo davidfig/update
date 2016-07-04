@@ -200,7 +200,7 @@ function add(funct, time, params)
         {
             test += key + ': --%<br>';
         }
-        test += 'Other: --';
+        test += 'Other: --%';
         debugOne(test, {name: 'percentages'});
         Debug.resize();
     }
