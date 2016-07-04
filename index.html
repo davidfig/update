@@ -2,20 +2,48 @@
     <style>
         body {
             margin: 0;
+            padding: 0;
         }
-        .code {
-            font-size: 100%;
+        .title {
+            margin-top: 1%;
+            margin-left: 15%;
+            font-size: 200%;
+        }
+        #code {
+            left: 15%;
             position: absolute;
-            left: 25%;
-            top: 50;
+            word-wrap: break-word;
+            z-index: -1;
         }
     </style>
-    <!--<script src="https://davidfig.github.io/debug/debug.js"></script>-->
+    <link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.5.0/styles/ascetic.min.css">
+    <script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.5.0/highlight.min.js"></script>
     <script src="../debug/debug.js"></script>
     <script src="update.js"></script>
 </head>
 <body>
-    <script>
+    <div class="title">Example for <a href="https://github.com/davidfig/update/">github.com/davidfig/update/</a></div>
+    <pre><code class="javascript" id="code"></code></pre>
+    <script id="sample">
+        // initialize debug panels to track progress
+        Debug.init();
+        var random = Debug.add('random', {text: '0'});
+
+        // initialize update loop
+        Update.init();
+
+        // add a call to testRandom every 100 MS and track it in Random Numbers debug panel
+        Update.add(testRandom, 100, {percent: 'Random Numbers'});
+
+        // add a call to testPI every update and track it in PI Calculation debug panel
+        Update.add(testPI, null, {percent: 'PI Calculation'});
+
+        // add a call to testDelay (tracked automatically in Other debug panel)
+        Update.add(testDelay);
+
+        // start update loop
+        Update.update();
+
         function testRandom()
         {
             debugOne(Math.random(), {panel: random});
@@ -37,46 +65,14 @@
             return test;
         }
 
-        Debug.init();
-        var random = Debug.add('random', {text: '0'});
-        Update.init();
-        Update.add(testRandom, 100, {percent: 'Random Numbers'});
-        Update.add(testPI, null, {percent: 'PI Calculation'});
-        Update.add(testDelay);
-        Update.update();
     </script>
-    <div class="code">
-        <div>
-            <div style="font-size: 130%">Example for <a href="https://github.com/davidfig/update">github.com/davidfig/update/</a></div>
-        </div>
-<!-- HTML generated using hilite.me --><div style="background: #ffffff; overflow:auto;width:auto;border:solid gray;border-width:.1em .1em .1em .8em;padding:.2em .6em;"><pre style="margin: 0; line-height: 125%">    <span style="color: #008800; font-weight: bold">function</span> testRandom()
-    {
-        debugOne(<span style="color: #007020">Math</span>.random(), {panel<span style="color: #333333">:</span> random});
-    }
-
-    <span style="color: #008800; font-weight: bold">function</span> testPI()
-    {
-        <span style="color: #008800; font-weight: bold">var</span> test <span style="color: #333333">=</span> <span style="color: #007020">Math</span>.pow(<span style="color: #007020">Math</span>.PI, <span style="color: #0000DD; font-weight: bold">100</span>);
-        <span style="color: #008800; font-weight: bold">return</span> test;
-    }
-
-    <span style="color: #008800; font-weight: bold">function</span> testDelay()
-    {
-        <span style="color: #008800; font-weight: bold">var</span> test <span style="color: #333333">=</span> <span style="color: #0000DD; font-weight: bold">0</span>;
-        <span style="color: #008800; font-weight: bold">for</span> (<span style="color: #008800; font-weight: bold">var</span> i <span style="color: #333333">=</span> <span style="color: #0000DD; font-weight: bold">0</span>; i <span style="color: #333333">&lt;</span> <span style="color: #0000DD; font-weight: bold">100000</span>; i<span style="color: #333333">++</span>)
+    <script>
+        window.onload = function()
         {
-            test <span style="color: #333333">+=</span> i <span style="color: #333333">*</span> <span style="color: #0000DD; font-weight: bold">3</span>;
-        }
-        <span style="color: #008800; font-weight: bold">return</span> test;
-    }
-
-    Debug.init();
-    <span style="color: #008800; font-weight: bold">var</span> random <span style="color: #333333">=</span> Debug.add(<span style="background-color: #fff0f0">&#39;random&#39;</span>, {text<span style="color: #333333">:</span> <span style="background-color: #fff0f0">&#39;0&#39;</span>});
-    Update.init();
-    Update.add(testRandom, <span style="color: #0000DD; font-weight: bold">100</span>, {percent<span style="color: #333333">:</span> <span style="background-color: #fff0f0">&#39;Random Numbers&#39;</span>});
-    Update.add(testPI, <span style="color: #008800; font-weight: bold">null</span>, {percent<span style="color: #333333">:</span> <span style="background-color: #fff0f0">&#39;PI Calculation&#39;</span>});
-    Update.add(testDelay);
-    Update.update();
-</pre></div>
-    </div>
+            var code = document.getElementById('code');
+            var script = document.getElementById('sample');
+            code.innerHTML = script.innerHTML;
+            hljs.highlightBlock(code);
+        };
+    </script>
 </body>
