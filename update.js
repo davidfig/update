@@ -25,7 +25,7 @@ var panels = {fps: null, meter: null, percent: null};
 var percentageList = [];
 var lastCount;
 
-var debug = false;
+var DEBUG = false;
 
 // this creates a rolling average using 500 entries to smooth the debug percentages
 var rollingAverage = 500;
@@ -40,6 +40,7 @@ function init(options)
     FPSActual = 1000 / FPS;
     if (options.debug)
     {
+        DEBUG = true;
         debugInit();
     }
 }
@@ -57,7 +58,7 @@ function pauseGame()
         pause = true;
         pauseElapsed = performance.now() - lastUpdate;
         updateOff = false;
-        if (debug)
+        if (DEBUG)
         {
             debugPause();
         }
@@ -127,7 +128,7 @@ function updateOther(elapsed)
             }
         }
         var start, result;
-        if (debug && panels.percent)
+        if (DEBUG && panels.percent)
         {
             start = performance.now();
             result = update.callback(elapsed, update.params);
@@ -159,7 +160,7 @@ function updateOther(elapsed)
         }
         count++;
     }
-    if (debug)
+    if (DEBUG)
     {
         if (lastCount !== count)
         {
@@ -192,21 +193,16 @@ function add(funct, time, params)
     params = params || {};
     var update = {callback: funct, params: params, duration: time, elapsed: 0, once: params.once, pause: false};
     list.push(update);
-    if (debug && params.percent)
+    if (DEBUG && params.percent)
     {
-        if (!Debug.get('percentages'))
-        {
-            panels.percent = Debug.add('percentages', {style: {textAlign: 'right'}});
-            percentageList['Other'] = {current: 0, amounts: []};
-        }
+debug(params.percent)
         percentageList[params.percent] = {current: 0, amounts: []};
         var test = '';
         for (var key in percentageList)
         {
             test += key + ': --%<br>';
         }
-        test += 'Other: --%';
-        debugOne(test, {name: 'percentages'});
+        debugOne(test, {panel: panels.percent});
         Debug.resize();
     }
     return update;
@@ -337,6 +333,8 @@ function debugInit()
     panels.fps = Debug.add('FPS', {text: '-- FPS'});
     panels.meter = Debug.addMeter('panel');
     panels.count = Debug.add('Updates', {text: '0 updates'});
+    panels.percent = Debug.add('percentages', {style: {textAlign: 'right'}});
+    percentageList['Other'] = {current: 0, amounts: []};
 }
 
 function debugPause()
