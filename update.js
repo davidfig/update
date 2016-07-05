@@ -247,7 +247,7 @@ function update()
             updateOther(elapsed);
         }
         lastUpdate = current;
-        if (debug)
+        if (DEBUG)
         {
             debugUpdate(current);
         }
