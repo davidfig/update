@@ -3,7 +3,7 @@
     License: MIT license <https://github.com/davidfig/update/license>
     Author: David Figatner
     Copyright (c) 2016 YOPEY YOPEY LLC
-*/ ;(function(){
+*/
 
 var list = [];
 var FPS = 60;
@@ -422,11 +422,11 @@ if (typeof define === 'function' && define.amd)
 // add support for CommonJS libraries such as browserify.
 if (typeof exports !== 'undefined')
 {
-    exports.Update = Update;
+    module.exports = Update;
 }
 
 // define globally in case AMD is not available or available but not used
 if (typeof window !== 'undefined')
 {
     window.Update = Update;
-}   })();
+}
