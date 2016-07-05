@@ -3,7 +3,7 @@
     License: MIT license <https://github.com/davidfig/update/license>
     Author: David Figatner
     Copyright (c) 2016 YOPEY YOPEY LLC
-*/ (function(){
+*/
 
 var list = [];
 var FPS = 60;
@@ -25,16 +25,22 @@ var panels = {fps: null, meter: null, percent: null};
 var percentageList = [];
 var lastCount;
 
+var DEBUG = false;
+
 // this creates a rolling average using 500 entries to smooth the debug percentages
 var rollingAverage = 500;
 
 // initialize Update
-function init()
+// options: {}
+//  debug {boolean} whether to turn on debug support (requires github.com/davidfig/debug)
+function init(options)
 {
+    options = options || {};
     checkVisibility();
     FPSActual = 1000 / FPS;
-    if (Debug)
+    if (options.debug)
     {
+        DEBUG = true;
         debugInit();
     }
 }
@@ -52,7 +58,7 @@ function pauseGame()
         pause = true;
         pauseElapsed = performance.now() - lastUpdate;
         updateOff = false;
-        if (Debug)
+        if (DEBUG)
         {
             debugPause();
         }
@@ -122,7 +128,7 @@ function updateOther(elapsed)
             }
         }
         var start, result;
-        if (Debug && panels.percent)
+        if (DEBUG && panels.percent)
         {
             start = performance.now();
             result = update.callback(elapsed, update.params);
@@ -154,7 +160,7 @@ function updateOther(elapsed)
         }
         count++;
     }
-    if (Debug)
+    if (DEBUG)
     {
         if (lastCount !== count)
         {
@@ -187,21 +193,15 @@ function add(funct, time, params)
     params = params || {};
     var update = {callback: funct, params: params, duration: time, elapsed: 0, once: params.once, pause: false};
     list.push(update);
-    if (Debug && params.percent)
+    if (DEBUG && params.percent)
     {
-        if (!Debug.get('percentages'))
-        {
-            panels.percent = Debug.add('percentages', {style: {textAlign: 'right'}});
-            percentageList['Other'] = {current: 0, amounts: []};
-        }
         percentageList[params.percent] = {current: 0, amounts: []};
         var test = '';
         for (var key in percentageList)
         {
             test += key + ': --%<br>';
         }
-        test += 'Other: --';
-        debugOne(test, {name: 'percentages'});
+        debugOne(test, {panel: panels.percent});
         Debug.resize();
     }
     return update;
@@ -247,7 +247,7 @@ function update()
             updateOther(elapsed);
         }
         lastUpdate = current;
-        if (Debug)
+        if (debug)
         {
             debugUpdate(current);
         }
@@ -332,6 +332,8 @@ function debugInit()
     panels.fps = Debug.add('FPS', {text: '-- FPS'});
     panels.meter = Debug.addMeter('panel');
     panels.count = Debug.add('Updates', {text: '0 updates'});
+    panels.percent = Debug.add('percentages', {style: {textAlign: 'right'}});
+    percentageList['Other'] = {current: 0, amounts: []};
 }
 
 function debugPause()
@@ -420,11 +422,11 @@ if (typeof define === 'function' && define.amd)
 // add support for CommonJS libraries such as browserify.
 if (typeof exports !== 'undefined')
 {
-    exports.Update = Update;
+    module.exports = Update;
 }
 
 // define globally in case AMD is not available or available but not used
 if (typeof window !== 'undefined')
 {
     window.Update = Update;
-} })();
+}
