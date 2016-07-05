@@ -25,15 +25,20 @@ var panels = {fps: null, meter: null, percent: null};
 var percentageList = [];
 var lastCount;
 
+var debug = false;
+
 // this creates a rolling average using 500 entries to smooth the debug percentages
 var rollingAverage = 500;
 
 // initialize Update
-function init()
+// options: {}
+//  debug {boolean} whether to turn on debug support (requires github.com/davidfig/debug)
+function init(options)
 {
+    options = options || {};
     checkVisibility();
     FPSActual = 1000 / FPS;
-    if (Debug)
+    if (options.debug)
     {
         debugInit();
     }
@@ -52,7 +57,7 @@ function pauseGame()
         pause = true;
         pauseElapsed = performance.now() - lastUpdate;
         updateOff = false;
-        if (Debug)
+        if (debug)
         {
             debugPause();
         }
@@ -122,7 +127,7 @@ function updateOther(elapsed)
             }
         }
         var start, result;
-        if (Debug && panels.percent)
+        if (debug && panels.percent)
         {
             start = performance.now();
             result = update.callback(elapsed, update.params);
@@ -154,7 +159,7 @@ function updateOther(elapsed)
         }
         count++;
     }
-    if (Debug)
+    if (debug)
     {
         if (lastCount !== count)
         {
@@ -187,7 +192,7 @@ function add(funct, time, params)
     params = params || {};
     var update = {callback: funct, params: params, duration: time, elapsed: 0, once: params.once, pause: false};
     list.push(update);
-    if (Debug && params.percent)
+    if (debug && params.percent)
     {
         if (!Debug.get('percentages'))
         {
@@ -247,7 +252,7 @@ function update()
             updateOther(elapsed);
         }
         lastUpdate = current;
-        if (Debug)
+        if (debug)
         {
             debugUpdate(current);
         }
