@@ -195,7 +195,6 @@ function add(funct, time, params)
     list.push(update);
     if (DEBUG && params.percent)
     {
-debug(params.percent)
         percentageList[params.percent] = {current: 0, amounts: []};
         var test = '';
         for (var key in percentageList)
