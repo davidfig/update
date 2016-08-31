@@ -1,0 +1,19 @@
+{
+  "name": "@yy/update",
+  "version": "1.0.0",
+  "description": "update API for javascript apps ",
+  "main": "update.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/davidfig/update.git"
+  },
+  "author": "david figatner",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/davidfig/update/issues"
+  },
+  "homepage": "https://github.com/davidfig/update#readme"
+}
