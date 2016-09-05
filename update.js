@@ -405,7 +405,8 @@ var Update = {
     remove: remove,
     registerPause: registerPause,
     pauseGame: pauseGame,
-    resumeGame: resumeGame
+    resumeGame: resumeGame,
+    panels: panels
 };
 
 // add support for AMD (Asynchronous Module Definition) libraries such as require.js.
