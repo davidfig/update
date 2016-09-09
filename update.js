@@ -138,7 +138,7 @@ function updateOther(elapsed)
             }
         }
         var start, result;
-        if (DEBUG && panels.percent)
+        if (DEBUG && PERCENT && panels.percent)
         {
             start = performance.now();
             result = update.callback(elapsed, update.params);
