@@ -5,418 +5,420 @@
     Copyright (c) 2016 YOPEY YOPEY LLC
 */
 
-var list = [];
-var FPS = 60;
-var FPSActual;
-var pause = false;
-var pauseRegistrations = [];
-var pauseElapsed = 0;
+/* globals Debug, debugOne, performance, requestAnimationFrame, setTimeout, window, define, document */
+var Update = {
 
-var startTime = 0;
-var frameNumber = 0;
-var lastUpdate = 0;
-var lastFPS = '--';
+    list: [],
+    FPS: 60,
+    pause: false,
+    pauseRegistrations: [],
+    pauseElapsed: 0,
 
-var tolerance = 1;
+    startTime: 0,
+    frameNumber: 0,
+    lastUpdate: 0,
+    lastFPS: '--',
 
-var maxChange = 100;
+    tolerance: 1,
 
-var panels = {fps: null, meter: null, percent: null};
-var percentageList = [];
-var lastCount;
+    maxChange: 100,
 
-var DEBUG = false;
-var COUNT = false;
-var PERCENT = false;
-var FPS = false;
+    panels: {fps: null, meter: null, percent: null},
+    percentageList: [],
 
-// this is the number of entries to use in a rolling average to smooth the debug percentages
-var rollingAverage = 500;
+    // this is the number of entries to use in a rolling average to smooth the debug percentages
+    rollingAverage: 500,
 
-/**
- * must call Update.init before using Update
- * @param {boolean} debug - whether to turn on debug support (requires github.com/davidfig/debug)
- * @param {boolean=false|string} count - show debug counts (can supply side for panel, e.g., 'topleft')
- * @param {boolean=false|string} percent - show debug percentage
- * @param {boolean=false|string} FPS - show debug FPS
- */
-function init(options)
-{
-    options = options || {};
-    checkVisibility();
-    FPSActual = 1000 / FPS;
-    if (options.debug)
+    /**
+     * must call Update.init before using Update
+     * @param {boolean} debug - whether to turn on debug support (requires github.com/davidfig/debug)
+     * @param {boolean=false|string} count - show debug counts (can supply side for panel, e.g., 'topleft')
+     * @param {boolean=false|string} percent - show debug percentage
+     * @param {boolean=false|string} FPS - show debug FPS
+     */
+    init: function(options)
     {
-        DEBUG = true;
-        COUNT = options.count;
-        PERCENT = options.percent;
-        FPS = options.FPS;
-        debugInit();
-    }
-}
+        options = options || {};
+        Update.checkVisibility();
+        Update.FPSActual = 1000 / Update.FPS;
+        if (options.debug)
+        {
+            Update.debug = {count: options.count, percent: options.percent, FPS: options.FPS};
+            Update._debugInit();
+        }
+    },
 
-// register functions to call after Update pauses or resumes
-function registerPause(pause, resume)
-{
-    pauseRegistrations.push({ pause: pause, resume: resume});
-}
-
-function pauseGame()
-{
-    if (pause !== true)
+    /**
+     * register functions to call after Update pauses or resumes
+     * @param {Function} pause
+     * @param {Function} resume
+     */
+    registerPause: function(pause, resume)
     {
-        pause = true;
-        pauseElapsed = performance.now() - lastUpdate;
-        updateOff = false;
-        if (DEBUG)
-        {
-            debugPause();
-        }
-        for (var i = 0; i < pauseRegistrations.length; i++)
-        {
-            pauseRegistrations[i].pause();
-        }
-    }
-}
+        Update.pauseRegistrations.push({ pause: pause, resume: resume});
+    },
 
-function resumeGame()
-{
-    if (pause === true)
+    /**
+     * pauses all updates
+     */
+    pauseGame: function()
     {
-        pause = false;
-        lastUpdate = performance.now() - pauseElapsed;
-        fpsReset();
-        for (var i = 0; i < pauseRegistrations.length; i++)
+        if (Update.pause !== true)
         {
-            pauseRegistrations[i].resume();
-        }
-        if (updateOff === true)
-        {
-            update();
-        }
-    }
-}
-
-function fpsReset()
-{
-    startTime = 0;
-    frameNumber = 0;
-    lastUpdate = 0;
-    lastFPS = '--';
-}
-
-function updateOther(elapsed)
-{
-    var i = 0, _i = list.length;
-    var total = 0, other = 0, updates = [], count = 0;
-    while (i < _i)
-    {
-        var update = list[i++];
-        if (update.pause)
-        {
-            continue;
-        }
-        if (update.duration !== 0)
-        {
-            update.elapsed += elapsed;
-            if (update.elapsed < update.duration)
+            Update.pause = true;
+            Update.pauseElapsed = performance.now() - Update.lastUpdate;
+            Update.updateOff = false;
+            if (Update.debug)
             {
-                if (DEBUG && PERCENT && update.params.percent)
+                Update.debugPause();
+            }
+            for (var i = 0; i < Update.pauseRegistrations.length; i++)
+            {
+                Update.pauseRegistrations[i].pause();
+            }
+        }
+    },
+
+    /**
+     * resumes all updates
+     */
+    resumeGame: function()
+    {
+        if (Update.pause === true)
+        {
+            Update.pause = false;
+            Update.lastUpdate = performance.now() - Update.pauseElapsed;
+            if (Update.debug.FPS)
+            {
+                Update.startTime = 0;
+                Update.frameNumber = 0;
+                Update.lastUpdate = 0;
+                Update.lastFPS = '--';
+            }
+            for (var i = 0; i < Update.pauseRegistrations.length; i++)
+            {
+                Update.pauseRegistrations[i].resume();
+            }
+            if (Update.updateOff === true)
+            {
+                Update.update();
+            }
+        }
+    },
+
+    /**
+     * loops through all updates
+     */
+    _updateAll: function(elapsed)
+    {
+        var i = 0, _i = Update.list.length;
+        var other = 0, count = 0;
+        while (i < _i)
+        {
+            var update = Update.list[i++];
+            if (update.pause)
+            {
+                continue;
+            }
+            if (update.duration !== 0)
+            {
+                update.elapsed += elapsed;
+                if (update.elapsed < update.duration)
                 {
-                    var change = percentageList[update.params.percent];
-                    change.amounts[change.current++] = 0;
-                    if (change.current === rollingAverage)
+                    if (Update.debug.percent && update.options.percent)
+                    {
+                        var change = Update.percentageList[update.options.percent];
+                        change.amounts[change.current++] = 0;
+                        if (change.current === Update.rollingAverage)
+                        {
+                            change.current = 0;
+                        }
+                    }
+                    continue;
+                }
+                else
+                {
+                    update.elapsed = 0;
+                }
+            }
+            var start, result;
+            if (Update.debug && Update.debug.percent)
+            {
+                start = performance.now();
+                result = update.callback(elapsed, update.options);
+                var current = performance.now() - start;
+                if (update.options.percent)
+                {
+                    var change = Update.percentageList[update.options.percent];
+                    change.amounts[change.current++] = current;
+                    if (change.current === Update.rollingAverage)
                     {
                         change.current = 0;
                     }
                 }
-                continue;
-            }
-            else
-            {
-                update.elapsed = 0;
-            }
-        }
-        var start, result;
-        if (DEBUG && PERCENT && panels.percent)
-        {
-            start = performance.now();
-            result = update.callback(elapsed, update.params);
-            current = performance.now() - start;
-            if (update.params.percent)
-            {
-                var change = percentageList[update.params.percent];
-                change.amounts[change.current++] = current;
-                if (change.current === rollingAverage)
+                else
                 {
-                    change.current = 0;
+                    other += current;
                 }
             }
             else
             {
-                other += current;
+                result = update.callback(elapsed, update.options);
             }
-            total += current;
+            if (update.once || result)
+            {
+                i--;
+                _i--;
+                Update.list.splice(i, 1);
+            }
+            count++;
+        }
+        if (Update.debug)
+        {
+            if (Update.debug.count && Update.lastCount !== count)
+            {
+                debugOne(count + ' updates', {panel: Update.panels.count});
+                Update.lastCount = count;
+            }
+            if (Update.debug.percent)
+            {
+                Update._debugPercent(other);
+            }
+        }
+    },
+
+    /**
+     * adds a function to the update loop
+     * @param {Function} funct
+     * @param {object} options
+     * @param {number=0} options.time in milliseconds to call this function
+     * @param {number=} options.FPS - this replaces options.time and calls the function at the desired FPS
+     * @param {boolean=false} options.once - call only once and then remove from update queue
+     * @param {string=} options.percent - name to track the percentage in the debug panel
+     */
+    add: function(funct, options)
+    {
+        options = options || {};
+        var time = options.time || (options.FPS ? 1000 / options.FPS : 0);
+        var update = {callback: funct, options: options, duration: time, elapsed: 0, once: options.once, pause: false};
+        Update.list.push(update);
+        if (Update.debug && options.percent)
+        {
+            Update.percentageList[options.percent] = {current: 0, amounts: []};
+            var test = '';
+            for (var key in Update.percentageList)
+            {
+                test += key + ': --%<br>';
+            }
+            debugOne(test, {panel: Update.panels.percent});
+            Debug.resize();
+        }
+        return update;
+    },
+
+    /**
+     * removes an update from the loop
+     * @param {object} update - object returned by Update.add()
+     */
+    remove: function(update)
+    {
+        var index = Update.list.indexOf(update);
+        Update.list.splice(index, 1);
+    },
+
+    /**
+     * starts the update loop
+     */
+    update: function()
+    {
+        if (Update.pause === true)
+        {
+            Update.updateOff = true;
+            return;
+        }
+        var current = performance.now();
+        var elapsed;
+        if (Update.lastUpdate === 0)
+        {
+            elapsed = 0;
         }
         else
         {
-            result = update.callback(elapsed, update.params);
+            elapsed = current - Update.lastUpdate;
+            elapsed = elapsed > Update.maxChange ? Update.maxChange : elapsed;
         }
-        if (update.once || result)
+        if (Update.FPS === 60 || elapsed === 0 || elapsed >= Update.FPSActual)
         {
-            i--;
-            _i--;
-            list.splice(i, 1);
-        }
-        count++;
-    }
-    if (DEBUG)
-    {
-        if (COUNT && lastCount !== count)
-        {
-            debugOne(count + ' updates', {panel: panels.count});
-            lastCount = count;
-        }
-        if (PERCENT && panels.percent)
-        {
-            debugPercent(other);
-        }
-    }
-}
-
-// Add a function to the update loop with a desired FPS
-// params:
-//   once: true or false -- call function only once
-//   percent: track percentages in a davidfig/Debug panel
-function addFPS(funct, fps, params)
-{
-    return add(funct, 1000 / fps, params);
-}
-
-// Add a function to the update loop ever time MS
-// params:
-//   once: true or false -- call function only once
-//   percent: track percentages in a davidfig/Debug panel
-function add(funct, time, params)
-{
-    time = time || 0;
-    params = params || {};
-    var update = {callback: funct, params: params, duration: time, elapsed: 0, once: params.once, pause: false};
-    list.push(update);
-    if (DEBUG && PERCENT && params.percent)
-    {
-        percentageList[params.percent] = {current: 0, amounts: []};
-        var test = '';
-        for (var key in percentageList)
-        {
-            test += key + ': --%<br>';
-        }
-        debugOne(test, {panel: panels.percent});
-        Debug.resize();
-    }
-    return update;
-}
-
-// removes an update from the loop
-// update is the object returned by Update.add() or Update.addFPS()
-function remove(update)
-{
-    for (var i = 0, _i = list.length; i < _i; i++)
-    {
-        if (list[i] === update)
-        {
-            list.splice(i, 1);
-            return;
-        }
-    }
-}
-
-// starts the update loop
-function update()
-{
-    if (pause === true)
-    {
-        updateOff = true;
-        return;
-    }
-    var current = performance.now();
-    var elapsed;
-    if (lastUpdate === 0)
-    {
-        elapsed = 0;
-    }
-    else
-    {
-        elapsed = current - lastUpdate;
-        elapsed = elapsed > maxChange ? maxChange : elapsed;
-    }
-    if (FPS === 60 || elapsed === 0 || elapsed >= FPSActual)
-    {
-        if (list.length)
-        {
-            updateOther(elapsed);
-        }
-        lastUpdate = current;
-        if (DEBUG && FPS)
-        {
-            debugUpdate(current);
-        }
-    }
-    if (typeof requestAnimationFrame === 'function')
-    {
-        requestAnimationFrame(update);
-    }
-    else
-    {
-        setTimeout(update, FPSActual);
-    }
-}
-
-//
-// Starts a page visibility event listener running, or window.onpagehide/onpageshow if not supported by the browser.
-// Also listens for window.onblur and window.onfocus.
-// based on Phaser: https://github.com/photonstorm/phaser (MIT license)
-function checkVisibility()
-{
-    var hiddenVar;
-    if (document.webkitHidden !== undefined)
-    {
-        hiddenVar = 'webkitvisibilitychange';
-    }
-    else if (document.mozHidden !== undefined)
-    {
-        hiddenVar = 'mozvisibilitychange';
-    }
-    else if (document.msHidden !== undefined)
-    {
-        hiddenVar = 'msvisibilitychange';
-    }
-    else if (document.hidden !== undefined)
-    {
-        hiddenVar = 'visibilitychange';
-    }
-    else
-    {
-        hiddenVar = null;
-    }
-
-    //  Does browser support it? If not (like in IE9 or old Android) we need to fall back to blur/focus
-    if (hiddenVar)
-    {
-        document.addEventListener(hiddenVar, visibilityChange, false);
-    }
-
-    window.onblur = visibilityChange;
-    window.onfocus = visibilityChange;
-
-    window.onpagehide = visibilityChange;
-    window.onpageshow = visibilityChange;
-}
-
-// Callback for checkVisibility()
-// based on Phaser: https://github.com/photonstorm/phaser (MIT license)
-function visibilityChange(event)
-{
-    if (event.type === 'pagehide' || event.type === 'blur' || event.type === 'pageshow' || event.type === 'focus')
-    {
-        if (event.type === 'pagehide' || event.type === 'blur')
-        {
-            pauseGame();
-        }
-        else if (event.type === 'pageshow' || event.type === 'focus')
-        {
-            resumeGame(event);
-        }
-        return;
-    }
-
-    if (document.hidden || document.mozHidden || document.msHidden || document.webkitHidden || event.type === "pause")
-    {
-        pauseGame(event);
-    }
-}
-
-// add an FPS panel and meter
-function debugInit()
-{
-    panels.fps = Debug.add('FPS', {text: '-- FPS'});
-    panels.meter = Debug.addMeter('panel');
-    panels.count = Debug.add('Updates', {text: '0 updates'});
-    panels.percent = Debug.add('percentages', {style: {textAlign: 'right'}});
-    percentageList['Other'] = {current: 0, amounts: []};
-}
-
-function debugPause()
-{
-    debugOne('-- FPS', {panel: panels.fps});
-}
-
-function debugUpdate(current)
-{
-    frameNumber++;
-    var currentTime = performance.now() - startTime;
-
-    // skip the first half second to get rid of garbage
-    if (currentTime > 500)
-    {
-        if (startTime !== 0)
-        {
-            lastFPS = Math.floor(frameNumber / (currentTime / 1000));
-            if (lastFPS >= 60 - tolerance && lastFPS <= 60 + tolerance)
+            if (Update.list.length)
             {
-                lastFPS = 60;
+                Update._updateAll(elapsed);
+            }
+            Update.lastUpdate = current;
+            if (Update.debug && Update.debug.FPS)
+            {
+                Update._debugUpdate(current);
             }
         }
-        startTime = performance.now();
-        frameNumber = 0;
-    }
-    debugOne(lastFPS + ' FPS', {panel: panels.fps});
-    var time = performance.now() - current;
-
-// TODO: 16.7 is hard coded for 60 FPS. Probably should figure out the real amount for the current FPS
-    var expected = (16.7 - time) / 16.7;
-    Debug.meter(expected, {panel: panels.meter});
-}
-
-function debugPercent(other)
-{
-    var change = percentageList['Other'];
-    change.amounts[change.current++] = other;
-    change.current %= rollingAverage;
-    var updates = [], all = 0;
-    for (var name in percentageList)
-    {
-        var change = percentageList[name];
-        var total = 0;
-        for (var i = 0; i < change.amounts.length; i++)
+        if (typeof requestAnimationFrame === 'function')
         {
-            total += change.amounts[i];
+            requestAnimationFrame(Update.update);
         }
-        total /= change.amounts.length;
-        all += total;
-        updates.push({name: name, total: total});
-    }
-    var result = '';
-    for (var i = 1; i < updates.length; i++)
-    {
-        var update = updates[i];
-        result += update.name + ': ' + Math.round(update.total / all * 100) + '%<br>';
-    }
-    var update = updates[0];
-    result += update.name + ': ' + Math.round(update.total / all * 100) + '%<br>';
-    debugOne(result, {panel: panels.percent});
-}
+        else
+        {
+            setTimeout(Update.update, Update.FPSActual);
+        }
+    },
 
-// exports
-var Update = {
-    init: init,
-    add: add,
-    update: update,
-    remove: remove,
-    registerPause: registerPause,
-    pauseGame: pauseGame,
-    resumeGame: resumeGame,
-    panels: panels
+    /**
+     * Starts a page visibility event listener running, or window.onpagehide/onpageshow if not supported by the browser. Also listens for window.onblur and window.onfocus.
+     * based on Phaser: https://github.com/photonstorm/phaser (MIT license)
+     */
+    checkVisibility: function()
+    {
+        var hiddenVar;
+        if (document.webkitHidden !== undefined)
+        {
+            hiddenVar = 'webkitvisibilitychange';
+        }
+        else if (document.mozHidden !== undefined)
+        {
+            hiddenVar = 'mozvisibilitychange';
+        }
+        else if (document.msHidden !== undefined)
+        {
+            hiddenVar = 'msvisibilitychange';
+        }
+        else if (document.hidden !== undefined)
+        {
+            hiddenVar = 'visibilitychange';
+        }
+        else
+        {
+            hiddenVar = null;
+        }
+
+        //  Does browser support it? If not (like in IE9 or old Android) we need to fall back to blur/focus
+        if (hiddenVar)
+        {
+            document.addEventListener(hiddenVar, Update.visibilityChange, false);
+        }
+
+        window.onblur = Update.visibilityChange;
+        window.onfocus = Update.visibilityChange;
+
+        window.onpagehide = Update.visibilityChange;
+        window.onpageshow = Update.visibilityChange;
+    },
+
+    /**
+     * Callback for checkVisibility()
+     * based on Phaser: https://github.com/photonstorm/phaser (MIT license)
+     */
+    visibilityChange: function(event)
+    {
+        if (event.type === 'pagehide' || event.type === 'blur' || event.type === 'pageshow' || event.type === 'focus')
+        {
+            if (event.type === 'pagehide' || event.type === 'blur')
+            {
+                Update.pauseGame();
+            }
+            else if (event.type === 'pageshow' || event.type === 'focus')
+            {
+                Update.resumeGame(event);
+            }
+            return;
+        }
+
+        if (document.hidden || document.mozHidden || document.msHidden || document.webkitHidden || event.type === 'pause')
+        {
+            Update.pauseGame(event);
+        }
+    },
+
+    /**
+     * adds debug panels (uses github.com/davidfig/debug)
+     */
+    _debugInit: function()
+    {
+        if (Update.debug.FPS)
+        {
+            Update.panels.fps = Debug.add('FPS', {text: '-- FPS'});
+            Update.panels.meter = Debug.addMeter('panel');
+        }
+        if (Update.debug.count)
+        {
+            Update.panels.count = Debug.add('Updates', {text: '0 updates'});
+        }
+        if (Update.debug.percent)
+        {
+            Update.panels.percent = Debug.add('percentages', {style: {textAlign: 'right'}});
+            Update.percentageList['Other'] = {current: 0, amounts: []};
+        }
+    },
+
+    debugPause: function()
+    {
+        debugOne('-- FPS', {panel: Update.panels.fps});
+    },
+
+    _debugUpdate: function(current)
+    {
+        Update.frameNumber++;
+        var currentTime = performance.now() - Update.startTime;
+
+        // skip the first half second to get rid of garbage
+        if (currentTime > 500)
+        {
+            if (Update.startTime !== 0)
+            {
+                Update.lastFPS = Math.floor(Update.frameNumber / (currentTime / 1000));
+                if (Update.lastFPS >= 60 - Update.tolerance && Update.lastFPS <= 60 + Update.tolerance)
+                {
+                    Update.lastFPS = 60;
+                }
+            }
+            Update.startTime = performance.now();
+            Update.frameNumber = 0;
+        }
+        debugOne(Update.lastFPS + ' FPS', {panel: Update.panels.fps});
+        var time = performance.now() - current;
+
+        // 16.7 is hard coded for 60 FPS. Probably should figure out the real amount for the current FPS
+        var expected = (16.7 - time) / 16.7;
+        Debug.meter(expected, {panel: Update.panels.meter});
+    },
+
+    /**
+     * update percentage panel
+     */
+    _debugPercent: function(other)
+    {
+        var change = Update.percentageList['Other'];
+        change.amounts[change.current++] = other;
+        change.current %= Update.rollingAverage;
+        var updates = [], all = 0;
+        for (var name in Update.percentageList)
+        {
+            var change = Update.percentageList[name];
+            var total = 0;
+            for (var i = 0; i < change.amounts.length; i++)
+            {
+                total += change.amounts[i];
+            }
+            total /= change.amounts.length;
+            all += total;
+            updates.push({name: name, total: total});
+        }
+        var result = '';
+        for (var i = 1; i < updates.length; i++)
+        {
+            var update = updates[i];
+            result += update.name + ': ' + Math.round(update.total / all * 100) + '%<br>';
+        }
+        var update = updates[0];
+        result += update.name + ': ' + Math.round(update.total / all * 100) + '%<br>';
+        debugOne(result, {panel: Update.panels.percent});
+    }
 };
 
 // add support for AMD (Asynchronous Module Definition) libraries such as require.js.
