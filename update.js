@@ -26,13 +26,20 @@ var percentageList = [];
 var lastCount;
 
 var DEBUG = false;
+var COUNT = false;
+var PERCENT = false;
+var FPS = false;
 
-// this creates a rolling average using 500 entries to smooth the debug percentages
+// this is the number of entries to use in a rolling average to smooth the debug percentages
 var rollingAverage = 500;
 
-// initialize Update
-// options: {}
-//  debug {boolean} whether to turn on debug support (requires github.com/davidfig/debug)
+/**
+ * must call Update.init before using Update
+ * @param {boolean} debug - whether to turn on debug support (requires github.com/davidfig/debug)
+ * @param {boolean=false|string} count - show debug counts (can supply side for panel, e.g., 'topleft')
+ * @param {boolean=false|string} percent - show debug percentage
+ * @param {boolean=false|string} FPS - show debug FPS
+ */
 function init(options)
 {
     options = options || {};
@@ -41,6 +48,9 @@ function init(options)
     if (options.debug)
     {
         DEBUG = true;
+        COUNT = options.count;
+        PERCENT = options.percent;
+        FPS = options.FPS;
         debugInit();
     }
 }
@@ -111,7 +121,7 @@ function updateOther(elapsed)
             update.elapsed += elapsed;
             if (update.elapsed < update.duration)
             {
-                if (DEBUG && update.params.percent)
+                if (DEBUG && PERCENT && update.params.percent)
                 {
                     var change = percentageList[update.params.percent];
                     change.amounts[change.current++] = 0;
@@ -162,12 +172,12 @@ function updateOther(elapsed)
     }
     if (DEBUG)
     {
-        if (lastCount !== count)
+        if (COUNT && lastCount !== count)
         {
             debugOne(count + ' updates', {panel: panels.count});
             lastCount = count;
         }
-        if (panels.percent)
+        if (PERCENT && panels.percent)
         {
             debugPercent(other);
         }
@@ -193,7 +203,7 @@ function add(funct, time, params)
     params = params || {};
     var update = {callback: funct, params: params, duration: time, elapsed: 0, once: params.once, pause: false};
     list.push(update);
-    if (DEBUG && params.percent)
+    if (DEBUG && PERCENT && params.percent)
     {
         percentageList[params.percent] = {current: 0, amounts: []};
         var test = '';
@@ -247,7 +257,7 @@ function update()
             updateOther(elapsed);
         }
         lastUpdate = current;
-        if (DEBUG)
+        if (DEBUG && FPS)
         {
             debugUpdate(current);
         }
