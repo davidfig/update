@@ -88,7 +88,7 @@ var Update = {
         {
             Update.pause = false;
             Update.lastUpdate = performance.now() - Update.pauseElapsed;
-            if (Update.debug.FPS)
+            if (Update.debug && Update.debug.FPS)
             {
                 Update.startTime = 0;
                 Update.frameNumber = 0;
