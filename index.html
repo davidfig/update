@@ -1,4 +1,14 @@
 <head>
+    <link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.5.0/styles/ascetic.min.css">
+    <script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.5.0/highlight.min.js"></script>
+
+    <script src="https://rawgit.com/davidfig/debug/master/debug.js"></script>
+    <script src="https://rawgit.com/davidfig/udpate/master/update.js"></script>
+
+    <!--for local debugging purposes-->
+    <!--<script src="../debug/debug.js"></script>
+    <script src="../update/update.js"></script>-->
+
     <style>
         body {
             margin: 0;
@@ -16,10 +26,6 @@
             z-index: -1;
         }
     </style>
-    <link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.5.0/styles/ascetic.min.css">
-    <script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.5.0/highlight.min.js"></script>
-    <script src="../debug/debug.js"></script>
-    <script src="update.js"></script>
 </head>
 <body>
     <div class="title">Example for <a href="https://github.com/davidfig/update/">github.com/davidfig/update/</a></div>
@@ -27,16 +33,16 @@
     <script id="sample">
         // initialize debug panels to track progress
         Debug.init();
-        var random = Debug.add('random', {text: '0'});
 
         // initialize update loop
-        Update.init();
+        Update.init({debug: true, percent: true, FPS: true, count: true});
 
-        // add a call to testRandom every 100 MS and track it in Random Numbers debug panel
-        Update.add(testRandom, 100, {percent: 'Random Numbers'});
+        // add a call to testRandom every 100 MS and show it in Random Numbers debug panel
+        Update.add(testRandom, {time: 100, percent: 'Random Numbers'});
+        var random = Debug.add('random', {text: '0', panels: 'Random'});
 
         // add a call to testPI every update and track it in PI Calculation debug panel
-        Update.add(testPI, null, {percent: 'PI Calculation'});
+        Update.add(testPI, {percent: 'PI Calculation'});
 
         // add a call to testDelay (tracked automatically in Other debug panel)
         Update.add(testDelay);
@@ -52,7 +58,6 @@
         function testPI()
         {
             var test = Math.pow(Math.PI, 100);
-            return test;
         }
 
         function testDelay()
@@ -62,7 +67,6 @@
             {
                 test += i * 3;
             }
-            return test;
         }
 
     </script>
