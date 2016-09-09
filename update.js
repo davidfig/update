@@ -70,7 +70,7 @@ var Update = {
             Update.updateOff = false;
             if (Update.debug)
             {
-                Update.debugPause();
+                Update._debugPause();
             }
             for (var i = 0; i < Update.pauseRegistrations.length; i++)
             {
@@ -356,9 +356,12 @@ var Update = {
         }
     },
 
-    debugPause: function()
+    _debugPause: function()
     {
-        debugOne('-- FPS', {panel: Update.panels.fps});
+        if (Debug.debug.FPS)
+        {
+            debugOne('-- FPS', {panel: Update.panels.fps});
+        }
     },
 
     _debugUpdate: function(current)
