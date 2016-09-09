@@ -111,7 +111,7 @@ function updateOther(elapsed)
             update.elapsed += elapsed;
             if (update.elapsed < update.duration)
             {
-                if (update.params.percent)
+                if (DEBUG && update.params.percent)
                 {
                     var change = percentageList[update.params.percent];
                     change.amounts[change.current++] = 0;
