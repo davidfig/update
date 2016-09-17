@@ -1,0 +1,66 @@
+## update.js
+update loop API for javascript apps. Works well with https://github.com/davidfig/debug (included for testing and examples)
+
+## Code Example
+
+        const Update = require('@yy/update');
+
+        // initialize update loop
+        Update.init();
+
+        // add a call to testRandom every 100 MS and track it in Random Numbers debug panel
+        Update.add(testRandom, {time: 100});
+
+        // add a call to testPI every update
+        Update.add(testPI);
+
+        // add a call to testDelay
+        Update.add(testDelay);
+
+        // start update loop
+        Update.update();
+
+        function testRandom()
+        {
+            debugOne(Math.random(), {panel: random});
+        }
+
+        function testPI()
+        {
+            var test = Math.pow(Math.PI, 100);
+        }
+
+        function testDelay()
+        {
+            var test = 0;
+            for (var i = 0; i < 100000; i++)
+            {
+                test += i * 3;
+            }
+        }
+
+## Live Example
+https://davidfig.github.io/update/
+
+see also
+
+* https://davidfig.github.io/animate/
+* https://davidfig.github.io/renderer/
+* https://davidfig.github.io/viewport/
+
+## Installation
+include update.js in your project or add to your workflow
+
+    npm install --save davidfig/update
+
+# API Reference
+{{#class name="Update"}}
+{{>body~}}
+{{>member-index~}}
+{{>separator~}}
+{{>members~}}
+{{/class}}
+
+* * *
+
+Copyright (c) 2016 YOPEY YOPEY LLC - MIT License - Documented by [jsdoc-to-markdown](https://github.com/75lb/jsdoc-to-markdown)
