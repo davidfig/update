@@ -1,0 +1,26 @@
+{
+  "name": "updatedemo",
+  "version": "1.0.0",
+  "description": "update loop API for javascript apps. Works well with https://github.com/davidfig/debug (included for testing and examples)",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "install": "browserify index.js > index.compiled.js",
+    "watch": "watchify index.js -vo index.compiled.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/davidfig/update.git"
+  },
+  "author": "David Figatner",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/davidfig/update/issues"
+  },
+  "homepage": "https://github.com/davidfig/update#readme",
+  "dependencies": {
+    "@yy/debug": "davidfig/debug",
+    "@yy/update": "davidfig/update",
+    "highlight.js": "^9.6.0"
+  }
+}

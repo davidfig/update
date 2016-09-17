@@ -1,14 +1,5 @@
 <head>
     <link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.5.0/styles/ascetic.min.css">
-    <script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.5.0/highlight.min.js"></script>
-
-    <script src="https://rawgit.com/davidfig/debug/master/debug.js"></script>
-    <script src="https://rawgit.com/davidfig/update/master/update.js"></script>
-
-    <!--for local debugging purposes-->
-    <!--<script src="../debug/debug.js"></script>
-    <script src="../update/update.js"></script>-->
-
     <style>
         body {
             margin: 0;
@@ -30,53 +21,5 @@
 <body>
     <div class="title">Example for <a href="https://github.com/davidfig/update/">github.com/davidfig/update/</a></div>
     <pre><code class="javascript" id="code"></code></pre>
-    <script id="sample">
-        // initialize debug panels to track progress
-        Debug.init();
-
-        // initialize update loop
-        Update.init({debug: true, percent: true, FPS: true, count: true});
-
-        // add a call to testRandom every 100 MS and show it in Random Numbers debug panel
-        Update.add(testRandom, {time: 100, percent: 'Random Numbers'});
-        var random = Debug.add('random', {text: '0', panels: 'Random'});
-
-        // add a call to testPI every update and track it in PI Calculation debug panel
-        Update.add(testPI, {percent: 'PI Calculation'});
-
-        // add a call to testDelay (tracked automatically in Other debug panel)
-        Update.add(testDelay);
-
-        // start update loop
-        Update.update();
-
-        function testRandom()
-        {
-            debugOne(Math.random(), {panel: random});
-        }
-
-        function testPI()
-        {
-            var test = Math.pow(Math.PI, 100);
-        }
-
-        function testDelay()
-        {
-            var test = 0;
-            for (var i = 0; i < 100000; i++)
-            {
-                test += i * 3;
-            }
-        }
-
-    </script>
-    <script>
-        window.onload = function()
-        {
-            var code = document.getElementById('code');
-            var script = document.getElementById('sample');
-            code.innerHTML = script.innerHTML;
-            hljs.highlightBlock(code);
-        };
-    </script>
+    <script src="index.compiled.js"></script>
 </body>
