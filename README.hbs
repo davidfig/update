@@ -3,41 +3,41 @@ update loop API for javascript apps. Works well with https://github.com/davidfig
 
 ## Code Example
 
-        const Update = require('@yy/update');
+    const Update = require('@yy/update');
 
-        // initialize update loop
-        Update.init();
+    // initialize update loop
+    Update.init();
 
-        // add a call to testRandom every 100 MS and track it in Random Numbers debug panel
-        Update.add(testRandom, {time: 100});
+    // add a call to testRandom every 100 MS and track it in Random Numbers debug panel
+    Update.add(testRandom, {time: 100});
 
-        // add a call to testPI every update
-        Update.add(testPI);
+    // add a call to testPI every update
+    Update.add(testPI);
 
-        // add a call to testDelay
-        Update.add(testDelay);
+    // add a call to testDelay
+    Update.add(testDelay);
 
-        // start update loop
-        Update.update();
+    // start update loop
+    Update.update();
 
-        function testRandom()
+    function testRandom()
+    {
+        debugOne(Math.random(), {panel: random});
+    }
+
+    function testPI()
+    {
+        var test = Math.pow(Math.PI, 100);
+    }
+
+    function testDelay()
+    {
+        var test = 0;
+        for (var i = 0; i < 100000; i++)
         {
-            debugOne(Math.random(), {panel: random});
+            test += i * 3;
         }
-
-        function testPI()
-        {
-            var test = Math.pow(Math.PI, 100);
-        }
-
-        function testDelay()
-        {
-            var test = 0;
-            for (var i = 0; i < 100000; i++)
-            {
-                test += i * 3;
-            }
-        }
+    }
 
 ## Live Example
 https://davidfig.github.io/update/
