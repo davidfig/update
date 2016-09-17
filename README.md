@@ -61,15 +61,9 @@ include update.js in your project or add to your workflow
     * [.registerPause(pause, resume)](#Update+registerPause)
     * [.pauseGame()](#Update+pauseGame)
     * [.resumeGame()](#Update+resumeGame)
-    * [._updateAll(elapsed)](#Update+_updateAll)
     * [.add(funct, options)](#Update+add)
     * [.remove(update)](#Update+remove)
     * [.update()](#Update+update)
-    * [.checkVisibility()](#Update+checkVisibility)
-    * [.visibilityChange()](#Update+visibilityChange)
-    * [._debugInit()](#Update+_debugInit)
-    * [._debugUpdate(current)](#Update+_debugUpdate)
-    * [._debugPercent(other)](#Update+_debugPercent)
 
 <a name="Update+init"></a>
 
@@ -109,17 +103,6 @@ pauses all updates
 resumes all updates
 
 **Kind**: instance method of <code>[Update](#Update)</code>  
-<a name="Update+_updateAll"></a>
-
-### update._updateAll(elapsed)
-loops through all updates
-
-**Kind**: instance method of <code>[Update](#Update)</code>  
-
-| Param | Type | Description |
-| --- | --- | --- |
-| elapsed | <code>number</code> | in milliseconds |
-
 <a name="Update+add"></a>
 
 ### update.add(funct, options)
@@ -153,48 +136,6 @@ removes an update from the loop
 starts the update loop
 
 **Kind**: instance method of <code>[Update](#Update)</code>  
-<a name="Update+checkVisibility"></a>
-
-### update.checkVisibility()
-Starts a page visibility event listener running, or window.onpagehide/onpageshow if not supported by the browser. Also listens for window.onblur and window.onfocus.
-based on Phaser: https://github.com/photonstorm/phaser (MIT license)
-
-**Kind**: instance method of <code>[Update](#Update)</code>  
-<a name="Update+visibilityChange"></a>
-
-### update.visibilityChange()
-Callback for checkVisibility()
-based on Phaser: https://github.com/photonstorm/phaser (MIT license)
-
-**Kind**: instance method of <code>[Update](#Update)</code>  
-<a name="Update+_debugInit"></a>
-
-### update._debugInit()
-adds debug panels (uses github.com/davidfig/debug)
-
-**Kind**: instance method of <code>[Update](#Update)</code>  
-<a name="Update+_debugUpdate"></a>
-
-### update._debugUpdate(current)
-update debug panels
-
-**Kind**: instance method of <code>[Update](#Update)</code>  
-
-| Param | Type | Description |
-| --- | --- | --- |
-| current | <code>number</code> | time |
-
-<a name="Update+_debugPercent"></a>
-
-### update._debugPercent(other)
-update percentage panel
-
-**Kind**: instance method of <code>[Update](#Update)</code>  
-
-| Param | Type | Description |
-| --- | --- | --- |
-| other | <code>number</code> | time |
-
 
 * * *
 

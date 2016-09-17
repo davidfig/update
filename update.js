@@ -115,6 +115,7 @@ class Update
     /**
      * loops through all updates
      * @param {number} elapsed in milliseconds
+     * @private
      */
     _updateAll(elapsed)
     {
@@ -279,6 +280,7 @@ class Update
     /**
      * Starts a page visibility event listener running, or window.onpagehide/onpageshow if not supported by the browser. Also listens for window.onblur and window.onfocus.
      * based on Phaser: https://github.com/photonstorm/phaser (MIT license)
+     * @private
      */
     checkVisibility()
     {
@@ -320,6 +322,7 @@ class Update
     /**
      * Callback for checkVisibility()
      * based on Phaser: https://github.com/photonstorm/phaser (MIT license)
+     * @private
      */
     visibilityChange(event)
     {
@@ -344,6 +347,7 @@ class Update
 
     /**
      * adds debug panels (uses github.com/davidfig/debug)
+     * @private
      */
     _debugInit()
     {
@@ -363,6 +367,10 @@ class Update
         }
     }
 
+    /**
+     * pause debug
+     * @private
+     */
     _debugPause()
     {
         if (this.debug.FPS)
@@ -374,6 +382,7 @@ class Update
     /**
      * update debug panels
      * @param {number} current time
+     * @private
      */
     _debugUpdate(current)
     {
@@ -405,6 +414,7 @@ class Update
     /**
      * update percentage panel
      * @param {number} other time
+     * @private
      */
     _debugPercent(other)
     {
