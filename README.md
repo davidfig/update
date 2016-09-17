@@ -57,27 +57,28 @@ include update.js in your project or add to your workflow
 **Kind**: global class  
 
 * [Update](#Update)
-    * [.init([Debug], [count], [percent], [FPS])](#Update+init)
+    * [.init([options])](#Update+init)
     * [.registerPause(pause, resume)](#Update+registerPause)
     * [.pauseGame()](#Update+pauseGame)
     * [.resumeGame()](#Update+resumeGame)
-    * [.add(funct, options)](#Update+add)
+    * [.add(funct, [options])](#Update+add)
     * [.remove(update)](#Update+remove)
     * [.update()](#Update+update)
 
 <a name="Update+init"></a>
 
-### update.init([Debug], [count], [percent], [FPS])
+### update.init([options])
 must call this.init before using Update
 
 **Kind**: instance method of <code>[Update](#Update)</code>  
 
 | Param | Type | Description |
 | --- | --- | --- |
-| [Debug] | <code>object</code> | pass Debug from github.com/davidfig/debug |
-| [count] | <code>boolean</code> &#124; <code>string</code> | show debug counts (can supply side for panel, e.g., 'topleft') |
-| [percent] | <code>boolean</code> &#124; <code>string</code> | show debug percentage |
-| [FPS] | <code>boolean</code> &#124; <code>string</code> | show debug FPS |
+| [options] | <code>object</code> |  |
+| [options.Debug] | <code>object</code> | pass Debug from github.com/davidfig/debug |
+| [options.count] | <code>boolean</code> &#124; <code>string</code> | show debug counts (can supply side for panel, e.g., 'topleft') |
+| [options.percent] | <code>boolean</code> &#124; <code>string</code> | show debug percentage |
+| [options.FPS] | <code>boolean</code> &#124; <code>string</code> | show debug FPS |
 
 <a name="Update+registerPause"></a>
 
@@ -105,7 +106,7 @@ resumes all updates
 **Kind**: instance method of <code>[Update](#Update)</code>  
 <a name="Update+add"></a>
 
-### update.add(funct, options)
+### update.add(funct, [options])
 adds a function to the update loop
 
 **Kind**: instance method of <code>[Update](#Update)</code>  
@@ -113,7 +114,7 @@ adds a function to the update loop
 | Param | Type | Default | Description |
 | --- | --- | --- | --- |
 | funct | <code>function</code> |  |  |
-| options | <code>object</code> |  |  |
+| [options] | <code>object</code> |  |  |
 | [options.time] | <code>number</code> | <code>0</code> | in milliseconds to call this function |
 | [options.FPS] | <code>number</code> |  | this replaces options.time and calls the function at the desired FPS |
 | [options.once] | <code>boolean</code> | <code>false</code> | call only once and then remove from update queue |

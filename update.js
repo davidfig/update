@@ -36,10 +36,11 @@ class Update
 
     /**
      * must call this.init before using Update
-     * @param {object} [Debug] pass Debug from github.com/davidfig/debug
-     * @param {boolean|string} [count] - show debug counts (can supply side for panel, e.g., 'topleft')
-     * @param {boolean|string} [percent] - show debug percentage
-     * @param {boolean|string} [FPS] - show debug FPS
+     * @param {object} [options]
+     * @param {object} [options.Debug] pass Debug from github.com/davidfig/debug
+     * @param {boolean|string} [options.count] - show debug counts (can supply side for panel, e.g., 'topleft')
+     * @param {boolean|string} [options.percent] - show debug percentage
+     * @param {boolean|string} [options.FPS] - show debug FPS
      */
     init(options)
     {
@@ -198,7 +199,7 @@ class Update
     /**
      * adds a function to the update loop
      * @param {Function} funct
-     * @param {object} options
+     * @param {object} [options]
      * @param {number} [options.time=0] in milliseconds to call this function
      * @param {number} [options.FPS] - this replaces options.time and calls the function at the desired FPS
      * @param {boolean} [options.once=false] - call only once and then remove from update queue
