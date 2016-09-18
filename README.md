@@ -1,5 +1,5 @@
-## update
-    update loop API for javascript apps
+## update.js
+update loop API for javascript apps
 
 ## Live Example with Source
 https://davidfig.github.io/update/
