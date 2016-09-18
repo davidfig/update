@@ -1,13 +1,46 @@
-/*
-    update.js <https://github.com/davidfig/update>
-    License: MIT license <https://github.com/davidfig/update/license>
-    Author: David Figatner
-    Copyright (c) 2016 YOPEY YOPEY LLC
-*/
+/**
+ * @file update.js
+ * @author David Figatner
+ * @license MIT
+ * @copyright YOPEY YOPEY LLC 2016
+ * {@link https://github.com/davidfig/update}
+ */
 
+// placeholder for yy-debug ({@link http://github.com/davidfig/debug})
 let Debug;
 
-/** @class */
+/**
+ * @description
+ * update loop API for javascript apps
+ * @example
+ * const Update = require('yy-update');
+ *
+ * // initialize update loop
+ * Update.init();
+ *
+ * // add a call to testPI every 100 ms
+ * Update.add(testPI, {time: 100});
+ *
+ * // add a call to testDelay
+ * Update.add(testDelay);
+ *
+ * // start update loop
+ * Update.update();
+ *
+ * function testPI()
+ * {
+ *    var test = Math.pow(Math.PI, 100);
+ * }
+ *
+ * function testDelay()
+ * {
+ *    var test = 0;
+ *    for (var i = 0; i < 100000; i++)
+ *    {
+ *        test += i * 3;
+ *    }
+ * }
+ */
 class Update
 {
     constructor()
