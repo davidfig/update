@@ -264,8 +264,14 @@ class Update
      */
     remove(update)
     {
-        var index = this.list.indexOf(update);
-        this.list.splice(index, 1);
+        if (update)
+        {
+            var index = this.list.indexOf(update);
+            if (index !== -1)
+            {
+                this.list.splice(index, 1);
+            }
+        }
     }
 
     /**
