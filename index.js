@@ -1,11 +1,11 @@
-const Debug = require('@yy/debug');
-const Update = require('@yy/update');
+const Debug = require('yy-debug');
+const Update = require('../update/update.js');
 
 // initialize debug panels to track progress
 Debug.init();
 
 // initialize update loop with debug options
-Update.init({debug: Debug, percent: true, FPS: true, count: true});
+Update.init({debug: Debug, percent: true, FPS: true, count: true, onLoop: function() { Debug.one('looping: ' + Math.random()); } });
 
 // add a call to testRandom every 100 MS and show it in Random Numbers debug panel
 Update.add(testRandom, {time: 100, percent: 'Random Numbers'});
