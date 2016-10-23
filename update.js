@@ -169,7 +169,7 @@ class Update
                 update.elapsed += elapsed;
                 if (update.elapsed < update.duration)
                 {
-                    if (this.debug.percent && update.options.percent)
+                    if (this.debug && this.debug.percent && update.options.percent)
                     {
                         var change = this.percentageList[update.options.percent];
                         change.amounts[change.current++] = 0;
