@@ -74,6 +74,7 @@ class Update
      * @param {boolean|string} [options.count] - show debug counts (can supply side for panel, e.g., 'topleft')
      * @param {boolean|string} [options.percent] - show debug percentage
      * @param {boolean|string} [options.FPS] - show debug FPS
+     * @param {function} [options.onLoop] call at end of update loop
      */
     init(options)
     {
@@ -86,6 +87,7 @@ class Update
             this.debug = {count: options.count, percent: options.percent, FPS: options.FPS};
             this._debugInit();
         }
+        this.onLoop = options.onLoop;
     }
 
     /**
@@ -306,6 +308,10 @@ class Update
             {
                 this._debugUpdate(current);
             }
+        }
+        if (this.onLoop)
+        {
+            this.onLoop();
         }
         if (typeof requestAnimationFrame === 'function')
         {
