@@ -39,6 +39,18 @@ function testDelay()
     }
 }
 
+// catch 'n' to test clearing and reloading update panels
+document.body.addEventListener('keypress',
+    function(e)
+    {
+        const code = (typeof e.which === 'number') ? e.which : e.keyCode;
+        if (code === 110) // n
+        {
+            Update.clear();
+        }
+    }
+);
+
 // shows the code in the demo
 window.onload = function()
 {

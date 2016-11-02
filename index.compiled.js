@@ -170,7 +170,7 @@ class Update
                 update.elapsed += elapsed;
                 if (update.elapsed < update.duration)
                 {
-                    if (this.debug.percent && update.options.percent)
+                    if (this.debug && this.debug.percent && update.options.percent)
                     {
                         var change = this.percentageList[update.options.percent];
                         change.amounts[change.current++] = 0;
@@ -259,6 +259,25 @@ class Update
             Debug.resize();
         }
         return update;
+    }
+
+    clear()
+    {
+        this.list = [];
+        if (this.debug)
+        {
+            Debug.remove(this.panels.fps);
+            Debug.remove(this.panels.meter);
+        }
+        if (this.debug.count)
+        {
+            Debug.remove(this.panels.count);
+        }
+        if (this.debug.percent)
+        {
+            Debug.remove(this.panels.percent);
+            this.percentageList['Other'] = {current: 0, amounts: []};
+        }
     }
 
     /**
@@ -555,6 +574,18 @@ function testDelay()
         test += i * 3;
     }
 }
+
+// catch 'n' to test clearing and reloading update panels
+document.body.addEventListener('keypress',
+    function(e)
+    {
+        const code = (typeof e.which === 'number') ? e.which : e.keyCode;
+        if (code === 110) // n
+        {
+            Update.clear();
+        }
+    }
+);
 
 // shows the code in the demo
 window.onload = function()
@@ -3876,9 +3907,9 @@ module.exports = function(hljs) {
   var NUMBERS = {
     className: 'number',
     variants: [
-      { begin: '\\b(0b[01\'_]+)' },
-      { begin: '\\b([\\d\'_]+(\\.[\\d\'_]*)?|\\.[\\d\'_]+)(u|U|l|L|ul|UL|f|F|b|B)' },
-      { begin: '(-?)(\\b0[xX][a-fA-F0-9\'_]+|(\\b[\\d\'_]+(\\.[\\d\'_]*)?|\\.[\\d\'_]+)([eE][-+]?[\\d\'_]+)?)' }
+      { begin: '\\b(0b[01\']+)' },
+      { begin: '\\b([\\d\']+(\\.[\\d\']*)?|\\.[\\d\']+)(u|U|l|L|ul|UL|f|F|b|B)' },
+      { begin: '(-?)(\\b0[xX][a-fA-F0-9\']+|(\\b[\\d\']+(\\.[\\d\']*)?|\\.[\\d\']+)([eE][-+]?[\\d\']+)?)' }
     ],
     relevance: 0
   };
@@ -4289,16 +4320,16 @@ module.exports = function(hljs) {
   var KEYWORDS = {
     keyword:
       // Normal keywords.
-      'abstract as base bool break byte case catch char checked const continue decimal dynamic ' +
+      'abstract as base bool break byte case catch char checked const continue decimal ' +
       'default delegate do double else enum event explicit extern finally fixed float ' +
-      'for foreach goto if implicit in int interface internal is lock long when ' +
+      'for foreach goto if implicit in int interface internal is lock long ' +
       'object operator out override params private protected public readonly ref sbyte ' +
       'sealed short sizeof stackalloc static string struct switch this try typeof ' +
-      'uint ulong unchecked unsafe ushort using virtual volatile void while async ' +
+      'uint ulong unchecked unsafe ushort using virtual void volatile while ' +
       'nameof ' +
       // Contextual keywords.
-      'ascending descending from get group into join let orderby partial select set value var ' +
-      'where yield',
+      'add alias ascending async await by descending dynamic equals from get global group into join ' +
+      'let on orderby partial remove select set value var where yield',
     literal:
       'null false true'
   };
@@ -4358,7 +4389,7 @@ module.exports = function(hljs) {
     ]
   };
 
-  var TYPE_IDENT_RE = hljs.IDENT_RE + '(<' + hljs.IDENT_RE + '>)?(\\[\\])?';
+  var TYPE_IDENT_RE = hljs.IDENT_RE + '(<' + hljs.IDENT_RE + '(\\s*,\\s*' + hljs.IDENT_RE + ')*>)?(\\[\\])?';
   return {
     aliases: ['csharp'],
     keywords: KEYWORDS,
@@ -4946,7 +4977,11 @@ module.exports = function(hljs) {
     'xorwrite goto near function end div overload object unit begin string on inline repeat until ' +
     'destructor write message program with read initialization except default nil if case cdecl in ' +
     'downto threadvar of try pascal const external constructor type public then implementation ' +
-    'finally published procedure';
+    'finally published procedure absolute reintroduce operator as is abstract alias assembler ' +
+    'bitpacked break continue cppdecl cvar enumerator experimental platform deprecated ' +
+    'unimplemented dynamic export far16 forward generic helper implements interrupt iochecks ' +
+    'local name nodefault noreturn nostackframe oldfpccall otherwise saveregisters softfloat ' +
+    'specialize strict unaligned varargs ';
   var COMMENT_MODES = [
     hljs.C_LINE_COMMENT_MODE,
     hljs.COMMENT(
@@ -5143,28 +5178,21 @@ module.exports = function(hljs) {
   return {
     aliases: ['docker'],
     case_insensitive: true,
-    keywords: 'from maintainer cmd expose add copy entrypoint volume user workdir onbuild run env label',
+    keywords: 'from maintainer expose env user onbuild',
     contains: [
       hljs.HASH_COMMENT_MODE,
+      hljs.APOS_STRING_MODE,
+      hljs.QUOTE_STRING_MODE,
+      hljs.NUMBER_MODE,
       {
-        keywords: 'run cmd entrypoint volume add copy workdir onbuild label',
-        begin: /^ *(onbuild +)?(run|cmd|entrypoint|volume|add|copy|workdir|label) +/,
+        beginKeywords: 'run cmd entrypoint volume add copy workdir label healthcheck',
         starts: {
           end: /[^\\]\n/,
           subLanguage: 'bash'
         }
-      },
-      {
-        keywords: 'from maintainer expose env user onbuild',
-        begin: /^ *(onbuild +)?(from|maintainer|expose|env|user|onbuild) +/, end: /[^\\]\n/,
-        contains: [
-          hljs.APOS_STRING_MODE,
-          hljs.QUOTE_STRING_MODE,
-          hljs.NUMBER_MODE,
-          hljs.HASH_COMMENT_MODE
-        ]
       }
-    ]
+    ],
+    illegal: '</'
   }
 };
 },{}],48:[function(require,module,exports){
@@ -7639,28 +7667,66 @@ module.exports = function(hljs) {
 };
 },{}],82:[function(require,module,exports){
 module.exports = function(hljs) {
+  var IDENT_RE = '[A-Za-z$_][0-9A-Za-z$_]*';
+  var KEYWORDS = {
+    keyword:
+      'in of if for while finally var new function do return void else break catch ' +
+      'instanceof with throw case default try this switch continue typeof delete ' +
+      'let yield const export super debugger as async await static ' +
+      // ECMAScript 6 modules import
+      'import from as'
+    ,
+    literal:
+      'true false null undefined NaN Infinity',
+    built_in:
+      'eval isFinite isNaN parseFloat parseInt decodeURI decodeURIComponent ' +
+      'encodeURI encodeURIComponent escape unescape Object Function Boolean Error ' +
+      'EvalError InternalError RangeError ReferenceError StopIteration SyntaxError ' +
+      'TypeError URIError Number Math Date String RegExp Array Float32Array ' +
+      'Float64Array Int16Array Int32Array Int8Array Uint16Array Uint32Array ' +
+      'Uint8Array Uint8ClampedArray ArrayBuffer DataView JSON Intl arguments require ' +
+      'module console window document Symbol Set Map WeakSet WeakMap Proxy Reflect ' +
+      'Promise'
+  };
+  var EXPRESSIONS;
+  var NUMBER = {
+    className: 'number',
+    variants: [
+      { begin: '\\b(0[bB][01]+)' },
+      { begin: '\\b(0[oO][0-7]+)' },
+      { begin: hljs.C_NUMBER_RE }
+    ],
+    relevance: 0
+  };
+  var SUBST = {
+    className: 'subst',
+    begin: '\\$\\{', end: '\\}',
+    keywords: KEYWORDS,
+    contains: []  // defined later
+  };
+  var TEMPLATE_STRING = {
+    className: 'string',
+    begin: '`', end: '`',
+    contains: [
+      hljs.BACKSLASH_ESCAPE,
+      SUBST
+    ]
+  };
+  SUBST.contains = [
+    hljs.APOS_STRING_MODE,
+    hljs.QUOTE_STRING_MODE,
+    TEMPLATE_STRING,
+    NUMBER,
+    hljs.REGEXP_MODE
+  ]
+  var PARAMS_CONTAINS = SUBST.contains.concat([
+    hljs.C_BLOCK_COMMENT_MODE,
+    hljs.C_LINE_COMMENT_MODE
+  ]);
+
   return {
     aliases: ['js', 'jsx'],
-    keywords: {
-      keyword:
-        'in of if for while finally var new function do return void else break catch ' +
-        'instanceof with throw case default try this switch continue typeof delete ' +
-        'let yield const export super debugger as async await static ' +
-        // ECMAScript 6 modules import
-        'import from as'
-      ,
-      literal:
-        'true false null undefined NaN Infinity',
-      built_in:
-        'eval isFinite isNaN parseFloat parseInt decodeURI decodeURIComponent ' +
-        'encodeURI encodeURIComponent escape unescape Object Function Boolean Error ' +
-        'EvalError InternalError RangeError ReferenceError StopIteration SyntaxError ' +
-        'TypeError URIError Number Math Date String RegExp Array Float32Array ' +
-        'Float64Array Int16Array Int32Array Int8Array Uint16Array Uint32Array ' +
-        'Uint8Array Uint8ClampedArray ArrayBuffer DataView JSON Intl arguments require ' +
-        'module console window document Symbol Set Map WeakSet WeakMap Proxy Reflect ' +
-        'Promise'
-    },
+    keywords: KEYWORDS,
     contains: [
       {
         className: 'meta',
@@ -7673,27 +7739,19 @@ module.exports = function(hljs) {
       },
       hljs.APOS_STRING_MODE,
       hljs.QUOTE_STRING_MODE,
-      { // template string
-        className: 'string',
-        begin: '`', end: '`',
-        contains: [
-          hljs.BACKSLASH_ESCAPE,
-          {
-            className: 'subst',
-            begin: '\\$\\{', end: '\\}'
-          }
-        ]
-      },
+      TEMPLATE_STRING,
       hljs.C_LINE_COMMENT_MODE,
       hljs.C_BLOCK_COMMENT_MODE,
-      {
-        className: 'number',
-        variants: [
-          { begin: '\\b(0[bB][01]+)' },
-          { begin: '\\b(0[oO][0-7]+)' },
-          { begin: hljs.C_NUMBER_RE }
-        ],
-        relevance: 0
+      NUMBER,
+      { // object attr container
+        begin: /[{,]\s*/, relevance: 0,
+        contains: [
+          {
+            begin: IDENT_RE + '\\s*:', returnBegin: true,
+            relevance: 0,
+            contains: [{className: 'attr', begin: IDENT_RE, relevance: 0}]
+          }
+        ]
       },
       { // "value" container
         begin: '(' + hljs.RE_STARTERS_RE + '|\\b(case|return|throw)\\b)\\s*',
@@ -7702,12 +7760,42 @@ module.exports = function(hljs) {
           hljs.C_LINE_COMMENT_MODE,
           hljs.C_BLOCK_COMMENT_MODE,
           hljs.REGEXP_MODE,
+          {
+            className: 'function',
+            begin: '(\\(.*?\\)|' + IDENT_RE + ')\\s*=>', returnBegin: true,
+            end: '\\s*=>',
+            contains: [
+              {
+                className: 'params',
+                variants: [
+                  {
+                    begin: IDENT_RE
+                  },
+                  {
+                    begin: /\(\s*\)/,
+                  },
+                  {
+                    begin: /\(/, end: /\)/,
+                    excludeBegin: true, excludeEnd: true,
+                    keywords: KEYWORDS,
+                    contains: PARAMS_CONTAINS
+                  }
+                ]
+              }
+            ]
+          },
           { // E4X / JSX
             begin: /</, end: /(\/\w+|\w+\/)>/,
             subLanguage: 'xml',
             contains: [
               {begin: /<\w+\s*\/>/, skip: true},
-              {begin: /<\w+/, end: /(\/\w+|\w+\/)>/, skip: true, contains: ['self']}
+              {
+                begin: /<\w+/, end: /(\/\w+|\w+\/)>/, skip: true,
+                contains: [
+                  {begin: /<\w+\s*\/>/, skip: true},
+                  'self'
+                ]
+              }
             ]
           }
         ],
@@ -7717,16 +7805,13 @@ module.exports = function(hljs) {
         className: 'function',
         beginKeywords: 'function', end: /\{/, excludeEnd: true,
         contains: [
-          hljs.inherit(hljs.TITLE_MODE, {begin: /[A-Za-z$_][0-9A-Za-z$_]*/}),
+          hljs.inherit(hljs.TITLE_MODE, {begin: IDENT_RE}),
           {
             className: 'params',
             begin: /\(/, end: /\)/,
             excludeBegin: true,
             excludeEnd: true,
-            contains: [
-              hljs.C_LINE_COMMENT_MODE,
-              hljs.C_BLOCK_COMMENT_MODE
-            ]
+            contains: PARAMS_CONTAINS
           }
         ],
         illegal: /\[|%/
@@ -8428,12 +8513,12 @@ module.exports = function(hljs) {
     variants: [{
       begin: '[\\.#:&\\[>]', end: '[;{}]'  // mixin calls end with ';'
       }, {
-      begin: INTERP_IDENT_RE + '[^;]*{',
-      end: '{'
+      begin: INTERP_IDENT_RE, end: '{'
     }],
     returnBegin: true,
     returnEnd:   true,
     illegal: '[<=\'$"]',
+    relevance: 0,
     contains: [
       hljs.C_LINE_COMMENT_MODE,
       hljs.C_BLOCK_COMMENT_MODE,
@@ -12390,6 +12475,9 @@ module.exports = function(hljs) {
         // \B in the beginning suppresses recognition of ?-sequences where ?
         // is the last character of a preceding identifier, as in: `func?4`
         begin: /\B\?(\\\d{1,3}|\\x[A-Fa-f0-9]{1,2}|\\u[A-Fa-f0-9]{4}|\\?\S)\b/
+      },
+      {
+        begin: /<<(-?)\w+$/, end: /^\s*\w+$/,
       }
     ]
   };
@@ -12567,8 +12655,6 @@ module.exports = function(hljs) {
 },{}],135:[function(require,module,exports){
 module.exports = function(hljs) {
   var NUM_SUFFIX = '([uif](8|16|32|64|size))\?';
-  var BLOCK_COMMENT = hljs.inherit(hljs.C_BLOCK_COMMENT_MODE);
-  BLOCK_COMMENT.contains.push('self');
   var KEYWORDS =
     'alignof as be box break const continue crate do else enum extern ' +
     'false fn for if impl in let loop match mod mut offsetof once priv ' +
@@ -12604,7 +12690,7 @@ module.exports = function(hljs) {
     illegal: '</',
     contains: [
       hljs.C_LINE_COMMENT_MODE,
-      BLOCK_COMMENT,
+      hljs.COMMENT('/\\*', '\\*/', {contains: ['self']}),
       hljs.inherit(hljs.QUOTE_STRING_MODE, {begin: /b?"/, illegal: null}),
       {
         className: 'string',
@@ -15415,8 +15501,8 @@ module.exports = function(hljs) {
     case_insensitive: true,
     keywords: {
       keyword:
-        'abs access after alias all and architecture array assert attribute begin block ' +
-        'body buffer bus case component configuration constant context cover disconnect ' +
+        'abs access after alias all and architecture array assert assume assume_guarantee attribute ' +
+        'begin block body buffer bus case component configuration constant context cover disconnect ' +
         'downto default else elsif end entity exit fairness file for force function generate ' +
         'generic group guarded if impure in inertial inout is label library linkage literal ' +
         'loop map mod nand new next nor not null of on open or others out package port ' +
@@ -15425,14 +15511,19 @@ module.exports = function(hljs) {
         'severity shared signal sla sll sra srl strong subtype then to transport type ' +
         'unaffected units until use variable vmode vprop vunit wait when while with xnor xor',
       built_in:
-        'boolean bit character severity_level integer time delay_length natural positive ' +
-        'string bit_vector file_open_kind file_open_status std_ulogic std_ulogic_vector ' +
+        'boolean bit character ' +
+        'integer time delay_length natural positive ' +
+        'string bit_vector file_open_kind file_open_status ' +
         'std_logic std_logic_vector unsigned signed boolean_vector integer_vector ' +
-        'real_vector time_vector'
+        'std_ulogic std_ulogic_vector unresolved_unsigned u_unsigned unresolved_signed u_signed' +
+        'real_vector time_vector',
+      literal:
+        'false true note warning error failure ' +  // severity_level
+        'line text side width'                      // textio
     },
     illegal: '{',
     contains: [
-      hljs.C_BLOCK_COMMENT_MODE,        // VHDL-2008 block commenting.
+      hljs.C_BLOCK_COMMENT_MODE,      // VHDL-2008 block commenting.
       hljs.COMMENT('--', '$'),
       hljs.QUOTE_STRING_MODE,
       {
@@ -15441,7 +15532,7 @@ module.exports = function(hljs) {
         relevance: 0
       },
       {
-        className: 'literal',
+        className: 'string',
         begin: '\'(U|X|0|1|Z|W|L|H|-)\'',
         contains: [hljs.BACKSLASH_ESCAPE]
       },
@@ -16134,13 +16225,14 @@ module.exports = function(hljs) {
   };
 };
 },{}],172:[function(require,module,exports){
-/*
-    Debug panels for javascript
-    debug.js <https://github.com/davidfig/debug>
-    Released under MIT license <https://github.com/davidfig/debug/blob/master/LICENSE>
-    Author: David Figatner
-    Copyright (c) 2016 YOPEY YOPEY LLC
-*/
+/**
+ * @file debug.js
+ * @summary Debug panels for javascript
+ * @author David Figatner
+ * @license MIT
+ * @copyright YOPEY YOPEY LLC 2016
+ * {@link https://github.com/davidfig/debug}
+ */
 
 /** @class */
 class Debug
@@ -16194,6 +16286,20 @@ class Debug
         this._minimizeCreate(side);
         side.panels[div.name] = div;
         div.side = side;
+        this._resizeSide(side);
+    }
+
+    /**
+     * remove a debug panel
+     * @param {object|string} div or name of panel
+     */
+    remove(name)
+    {
+        const div = (typeof name === 'string') ? this.get(name) : name;
+        const side = div.side;
+        delete side.panels[div.name];
+        document.body.removeChild(div);
+        localStorage.setItem(side.dir + '-' + div.name, false);
         this._resizeSide(side);
     }
 
@@ -16733,7 +16839,7 @@ class Debug
     _click(div, isLeft)
     {
         div.addEventListener('click', div.click.bind(this));
-        div.addEventListener('touchstart', div.click.bind(this));
+        div.addEventListener('touchend', div.click.bind(this));
         div.style.pointerEvents = 'auto';
         div.isLeft = isLeft;
     }
@@ -16746,7 +16852,7 @@ class Debug
     _handleMinimize(e)
     {
         var div = e.currentTarget;
-        var side = e.currentTarget.offsetParent.side;
+        var side = div.offsetParent.side;
         side.isMinimized = !side.isMinimized;
         window.localStorage.setItem(side.dir, side.isMinimized);
         div.innerHTML = side.isMinimized ? '+' : '&mdash;';
@@ -16778,25 +16884,27 @@ class Debug
         {
             return;
         }
+        // don't prevent default if coming from handleClick
+        if (!e.cheat)
+        {
+            e.preventDefault();
+        }
+        if (div.options.expandable)
+        {
+            div.expanded = !div.expanded;
+        }
         else
         {
-            if (div.options.expandable)
+            var index = div.side.minimized.indexOf(div);
+            if (index === -1)
             {
-                div.expanded = !div.expanded;
+                div.side.minimized.push(div);
+                localStorage.setItem(div.side.dir + '-' + div.name, 'true');
             }
             else
             {
-                var index = div.side.minimized.indexOf(div);
-                if (index === -1)
-                {
-                    div.side.minimized.push(div);
-                    localStorage.setItem(div.side.dir + '-' + div.name, 'true');
-                }
-                else
-                {
-                    div.side.minimized.splice(index, 1);
-                    localStorage.setItem(div.side.dir + '-' + div.name, 'false');
-                }
+                div.side.minimized.splice(index, 1);
+                localStorage.setItem(div.side.dir + '-' + div.name, 'false');
             }
         }
         this.resize();
@@ -16935,7 +17043,9 @@ class Debug
     }
 
     /**
-     * handler for ` key used to expand default debug box
+     * handler for:
+     *  ` key used to expand default debug box
+     *  c/C key to copy contents of default div to clipboard
      * @param {Event} e
      */
     _keypress(e)
@@ -16943,7 +17053,11 @@ class Debug
         var code = (typeof e.which === 'number') ? e.which : e.keyCode;
         if (code === 96)
         {
-            this._handleClick({currentTarget: this.defaultDiv});
+            this._handleClick({currentTarget: this.defaultDiv, cheat: true});
+        }
+        if (code === 67 || code === 99)
+        {
+            this.clipboard(this.defaultDiv.textContent);
         }
     }
 
@@ -16955,6 +17069,23 @@ class Debug
     {
         console.error(e);
         this.log((e.message ? e.message : (e.error && e.error.message ? e.error.message : '')) + ' at ' + e.filename + ' line ' + e.lineno, {color: 'error'});
+    }
+
+    /**
+     * copies text to clipboard
+     * called after pressing c or C (if input is allowed to bubble down)
+     * from http://stackoverflow.com/questions/400212/how-do-i-copy-to-the-clipboard-in-javascript
+     * @param {string} text
+     */
+    clipboard(text)
+    {
+        var textArea = document.createElement('textarea');
+        textArea.style.alpha = 0;
+        textArea.value = text;
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
     }
 };
 
