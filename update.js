@@ -263,10 +263,11 @@ class Update
     clear()
     {
         this.list = [];
-        if (this.debug.percent)
+        if (this.debug && this.debug.percent)
         {
             this.percentageList = {};
             this.percentageList['Other'] = {current: 0, amounts: []};
+            Debug.resize();
         }
     }
 
@@ -309,10 +310,7 @@ class Update
         }
         if (this.FPS === 60 || elapsed === 0 || elapsed >= this.FPSActual)
         {
-            if (this.list.length)
-            {
-                this._updateAll(elapsed);
-            }
+            this._updateAll(elapsed);
             this.lastUpdate = current;
             if (this.debug && this.debug.FPS)
             {
@@ -478,7 +476,7 @@ class Update
         change.amounts[change.current++] = other;
         change.current %= this.rollingAverage;
         var updates = [], all = 0;
-        for (var name in this.perentageList)
+        for (var name in this.percentageList)
         {
             var change = this.percentageList[name];
             var total = 0;
@@ -497,7 +495,7 @@ class Update
             result += update.name + ': ' + Math.round(update.total / all * 100) + '%<br>';
         }
         var update = updates[0];
-        result += update.name + ': ' + Math.round(update.total / all * 100) + '%<br>';
+        result += update.name + ': ' + (all === 0 ? '100' : Math.round(update.total / all * 100)) + '%<br>';
         Debug.one(result, {panel: this.panels.percent});
     }
 }
