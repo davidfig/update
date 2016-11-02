@@ -1,6 +1,6 @@
 {
   "name": "yy-update",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "update API for javascript apps ",
   "main": "update.js",
   "scripts": {
