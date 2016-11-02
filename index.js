@@ -39,20 +39,24 @@ function testDelay()
     }
 }
 
-let clear = false;
-
-// catch 'n' to test clearing and reloading update panels
+// 'c' clears all updates
+// 'a' adds an update
+let multiplication = 1;
 document.body.addEventListener('keypress',
     function(e)
     {
         const code = (typeof e.which === 'number') ? e.which : e.keyCode;
-        if (code === 110) // n
+        if (code === 99) // c
         {
-            if (!clear)
-            {
-                Update.clear();
-                clear = true;
-            }
+            Update.clear();
+        }
+        else if (code === 97) // a
+        {
+            Update.add(testRandom, {percent: 'Random - '  + multiplication++});
+        }
+        else // debug code to random panel (only works after a clear)
+        {
+            Debug.one(code, {panel: random});
         }
     }
 );
@@ -70,3 +74,6 @@ window.onload = function()
     }
     client.send();
 };
+
+// for eslint
+/* global document, window, XMLHttpRequest */

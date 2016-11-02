@@ -264,19 +264,11 @@ class Update
     clear()
     {
         this.list = [];
-        if (this.debug)
+        if (this.debug && this.debug.percent)
         {
-            Debug.remove(this.panels.fps);
-            Debug.remove(this.panels.meter);
-        }
-        if (this.debug.count)
-        {
-            Debug.remove(this.panels.count);
-        }
-        if (this.debug.percent)
-        {
-            Debug.remove(this.panels.percent);
+            this.percentageList = {};
             this.percentageList['Other'] = {current: 0, amounts: []};
+            Debug.resize();
         }
     }
 
@@ -319,10 +311,7 @@ class Update
         }
         if (this.FPS === 60 || elapsed === 0 || elapsed >= this.FPSActual)
         {
-            if (this.list.length)
-            {
-                this._updateAll(elapsed);
-            }
+            this._updateAll(elapsed);
             this.lastUpdate = current;
             if (this.debug && this.debug.FPS)
             {
@@ -507,7 +496,7 @@ class Update
             result += update.name + ': ' + Math.round(update.total / all * 100) + '%<br>';
         }
         var update = updates[0];
-        result += update.name + ': ' + Math.round(update.total / all * 100) + '%<br>';
+        result += update.name + ': ' + (all === 0 ? '100' : Math.round(update.total / all * 100)) + '%<br>';
         Debug.one(result, {panel: this.panels.percent});
     }
 }
@@ -575,20 +564,24 @@ function testDelay()
     }
 }
 
-let clear = false;
-
-// catch 'n' to test clearing and reloading update panels
+// 'c' clears all updates
+// 'a' adds an update
+let multiplication = 1;
 document.body.addEventListener('keypress',
     function(e)
     {
         const code = (typeof e.which === 'number') ? e.which : e.keyCode;
-        if (code === 110) // n
+        if (code === 99) // c
         {
-            if (!clear)
-            {
-                Update.clear();
-                clear = true;
-            }
+            Update.clear();
+        }
+        else if (code === 97) // a
+        {
+            Update.add(testRandom, {percent: 'Random - '  + multiplication++});
+        }
+        else // debug code to random panel (only works after a clear)
+        {
+            Debug.one(code, {panel: random});
         }
     }
 );
@@ -606,6 +599,9 @@ window.onload = function()
     }
     client.send();
 };
+
+// for eslint
+/* global document, window, XMLHttpRequest */
 },{"../update/update.js":1,"highlight.js":5,"yy-debug":172}],4:[function(require,module,exports){
 /*
 Syntax highlighting with language autodetection.
