@@ -575,6 +575,8 @@ function testDelay()
     }
 }
 
+let clear = false;
+
 // catch 'n' to test clearing and reloading update panels
 document.body.addEventListener('keypress',
     function(e)
@@ -582,7 +584,11 @@ document.body.addEventListener('keypress',
         const code = (typeof e.which === 'number') ? e.which : e.keyCode;
         if (code === 110) // n
         {
-            Update.clear();
+            if (!clear)
+            {
+                Update.clear();
+                clear = true;
+            }
         }
     }
 );
