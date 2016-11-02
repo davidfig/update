@@ -263,18 +263,9 @@ class Update
     clear()
     {
         this.list = [];
-        if (this.debug)
-        {
-            Debug.remove(this.panels.fps);
-            Debug.remove(this.panels.meter);
-        }
-        if (this.debug.count)
-        {
-            Debug.remove(this.panels.count);
-        }
         if (this.debug.percent)
         {
-            Debug.remove(this.panels.percent);
+            this.percentageList = {};
             this.percentageList['Other'] = {current: 0, amounts: []};
         }
     }
@@ -487,7 +478,7 @@ class Update
         change.amounts[change.current++] = other;
         change.current %= this.rollingAverage;
         var updates = [], all = 0;
-        for (var name in this.percentageList)
+        for (var name in this.perentageList)
         {
             var change = this.percentageList[name];
             var total = 0;
