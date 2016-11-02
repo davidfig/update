@@ -260,6 +260,25 @@ class Update
         return update;
     }
 
+    clear()
+    {
+        this.list = [];
+        if (this.debug)
+        {
+            Debug.remove(this.panels.fps);
+            Debug.remove(this.panels.meter);
+        }
+        if (this.debug.count)
+        {
+            Debug.remove(this.panels.count);
+        }
+        if (this.debug.percent)
+        {
+            Debug.remove(this.panels.percent);
+            this.percentageList['Other'] = {current: 0, amounts: []};
+        }
+    }
+
     /**
      * removes an update from the loop
      * @param {object} update - object returned by this.add()
