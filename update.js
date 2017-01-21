@@ -155,6 +155,7 @@ class Update
      */
     _updateAll(elapsed)
     {
+        this.updateRemove = [];
         var i = 0, _i = this.list.length;
         var other = 0, count = 0;
         while (i < _i)
@@ -229,6 +230,11 @@ class Update
                 this._debugPercent(other);
             }
         }
+        while (this.updateRemove.length)
+        {
+            this._remove(this.updateRemove.pop());
+        }
+        this.updateRemove = null;
     }
 
     /**
@@ -279,11 +285,29 @@ class Update
     {
         if (update)
         {
-            var index = this.list.indexOf(update);
-            if (index !== -1)
+            if (this.updateRemove)
             {
-                this.list.splice(index, 1);
+                this.updateRemove.push(update);
             }
+            else
+            {
+                this._remove(update);
+            }
+        }
+    }
+
+    /**
+     * removes the update from the loop
+     * this does not check whether the update loop is active; use this.remove() instead
+     * @param {object} update - object returned by this.add()
+     * @private
+     */
+    _remove(update)
+    {
+        var index = this.list.indexOf(update);
+        if (index !== -1)
+        {
+            this.list.splice(index, 1);
         }
     }
 
