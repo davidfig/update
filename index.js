@@ -3,13 +3,15 @@ const Update = require('../update/update.js');
 
 // initialize debug panels to track progress
 Debug.init();
+var loop = Debug.add('loop', {text: 'looping', panels: 'Looping'});
 
 // initialize update loop with debug options
-Update.init({debug: Debug, percent: true, FPS: true, count: true, onLoop: function() { Debug.one('looping: ' + Math.random()); } });
+Update.init({debug: Debug, percent: true, FPS: true, count: true, onLoop: function() { Debug.one('looping: ' + Math.random(), {panel: loop}); } });
 
 // add a call to testRandom every 100 MS and show it in Random Numbers debug panel
-Update.add(testRandom, {time: 100, percent: 'Random Numbers'});
+var randomLoop = Update.add(testRandom, {time: 100, percent: 'Random Numbers'});
 var random = Debug.add('random', {text: '0', panels: 'Random'});
+var randomLoopRemove = false;
 
 // add a call to testPI every update and track it in PI Calculation debug panel
 Update.add(testPI, {percent: 'PI Multiplication'});
@@ -21,6 +23,17 @@ Update.add(testDelay);
 Update.update();
 
 function testRandom()
+{
+    Debug.one(Math.random(), {panel: random});
+    if (randomLoopRemove)
+    {
+        Update.remove(randomLoop);
+        randomLoop = null;
+        randomLoopRemove = false;
+    }
+}
+
+function otherRandom()
 {
     Debug.one(Math.random(), {panel: random});
 }
@@ -52,14 +65,23 @@ document.body.addEventListener('keypress',
         }
         else if (code === 97) // a
         {
-            Update.add(testRandom, {percent: 'Random - '  + multiplication++});
+            Update.add(otherRandom, {percent: 'Random - '  + multiplication++});
         }
-        else // debug code to random panel (only works after a clear)
+        else if (code == 98) // b
         {
-            Debug.one(code, {panel: random});
+            if (randomLoop)
+            {
+                randomLoopRemove = true;
+            }
+            else
+            {
+                randomLoop = Update.add(testRandom, {time: 100, percent: 'Random Numbers'});
+            }
         }
     }
 );
+
+Debug.log('______Tests______<br>Press A to add an update<br>Press B to add/remove the random update during the update loop<br>Press C to clear the Random updates')
 
 // shows the code in the demo
 window.onload = function()

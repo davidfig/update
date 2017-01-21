@@ -1,511 +1,4 @@
 (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);var f=new Error("Cannot find module '"+o+"'");throw f.code="MODULE_NOT_FOUND",f}var l=n[o]={exports:{}};t[o][0].call(l.exports,function(e){var n=t[o][1][e];return s(n?n:e)},l,l.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
-/**
- * @file update.js
- * @author David Figatner
- * @license MIT
- * @copyright YOPEY YOPEY LLC 2016
- * {@link https://github.com/davidfig/update}
- */
-
-// placeholder for yy-debug ({@link http://github.com/davidfig/debug})
-let Debug;
-
-/**
- * @description
- * update loop API for javascript apps
- * @example
- * const Update = require('yy-update');
- *
- * // initialize update loop
- * Update.init();
- *
- * // add a call to testPI every 100 ms
- * Update.add(testPI, {time: 100});
- *
- * // add a call to testDelay
- * Update.add(testDelay);
- *
- * // start update loop
- * Update.update();
- *
- * function testPI()
- * {
- *    var test = Math.pow(Math.PI, 100);
- * }
- *
- * function testDelay()
- * {
- *    var test = 0;
- *    for (var i = 0; i < 100000; i++)
- *    {
- *        test += i * 3;
- *    }
- * }
- */
-class Update
-{
-    constructor()
-    {
-        this.list = [];
-        this.FPS = 60;
-        this.pause = false;
-        this.pauseRegistrations = [];
-        this.pauseElapsed = 0;
-
-        this.startTime = 0;
-        this.frameNumber = 0;
-        this.lastUpdate = 0;
-        this.lastFPS = '--';
-
-        this.tolerance = 1;
-
-        this.maxChange = 100;
-
-        this.panels = {fps: null, meter: null, percent: null};
-        this.percentageList = [];
-
-        // this is the number of entries to use in a rolling average to smooth the debug percentages
-        this.rollingAverage = 500;
-    }
-
-    /**
-     * must call this.init before using Update
-     * @param {object} [options]
-     * @param {object} [options.Debug] pass Debug from github.com/davidfig/debug
-     * @param {boolean|string} [options.count] - show debug counts (can supply side for panel, e.g., 'topleft')
-     * @param {boolean|string} [options.percent] - show debug percentage
-     * @param {boolean|string} [options.FPS] - show debug FPS
-     * @param {function} [options.onLoop] call at end of update loop
-     */
-    init(options)
-    {
-        options = options || {};
-        this.checkVisibility();
-        this.FPSActual = 1000 / this.FPS;
-        if (options.debug)
-        {
-            Debug = options.debug;
-            this.debug = {count: options.count, percent: options.percent, FPS: options.FPS};
-            this._debugInit();
-        }
-        this.onLoop = options.onLoop;
-    }
-
-    /**
-     * register functions to call after Update pauses or resumes
-     * @param {Function} pause
-     * @param {Function} resume
-     */
-    registerPause(pause, resume)
-    {
-        this.pauseRegistrations.push({ pause: pause, resume: resume});
-    }
-
-    /**
-     * pauses all updates
-     */
-    pauseGame()
-    {
-        if (this.pause !== true)
-        {
-            this.pause = true;
-            this.pauseElapsed = performance.now() - this.lastUpdate;
-            this.updateOff = false;
-            if (this.debug)
-            {
-                this._debugPause();
-            }
-            for (var i = 0; i < this.pauseRegistrations.length; i++)
-            {
-                this.pauseRegistrations[i].pause();
-            }
-        }
-    }
-
-    /**
-     * resumes all updates
-     */
-    resumeGame()
-    {
-        if (this.pause === true)
-        {
-            this.pause = false;
-            this.lastUpdate = performance.now() - this.pauseElapsed;
-            if (Debug && this.debug && this.debug.FPS)
-            {
-                this.startTime = 0;
-                this.frameNumber = 0;
-                this.lastUpdate = 0;
-                this.lastFPS = '--';
-            }
-            for (var i = 0; i < this.pauseRegistrations.length; i++)
-            {
-                this.pauseRegistrations[i].resume();
-            }
-            if (this.updateOff === true)
-            {
-                this.update();
-            }
-        }
-    }
-
-    /**
-     * loops through all updates
-     * @param {number} elapsed in milliseconds
-     * @private
-     */
-    _updateAll(elapsed)
-    {
-        var i = 0, _i = this.list.length;
-        var other = 0, count = 0;
-        while (i < _i)
-        {
-            var update = this.list[i++];
-            if (update.pause)
-            {
-                continue;
-            }
-            if (update.duration !== 0)
-            {
-                update.elapsed += elapsed;
-                if (update.elapsed < update.duration)
-                {
-                    if (this.debug && this.debug.percent && update.options.percent)
-                    {
-                        var change = this.percentageList[update.options.percent];
-                        change.amounts[change.current++] = 0;
-                        if (change.current === this.rollingAverage)
-                        {
-                            change.current = 0;
-                        }
-                    }
-                    continue;
-                }
-                else
-                {
-                    update.elapsed = 0;
-                }
-            }
-            var start, result;
-            if (this.debug && this.debug.percent)
-            {
-                start = performance.now();
-                result = update.callback(elapsed, update.options);
-                var current = performance.now() - start;
-                if (update.options.percent)
-                {
-                    var change = this.percentageList[update.options.percent];
-                    change.amounts[change.current++] = current;
-                    if (change.current === this.rollingAverage)
-                    {
-                        change.current = 0;
-                    }
-                }
-                else
-                {
-                    other += current;
-                }
-            }
-            else
-            {
-                result = update.callback(elapsed, update.options);
-            }
-            if (update.once || result)
-            {
-                i--;
-                _i--;
-                this.list.splice(i, 1);
-            }
-            count++;
-        }
-        if (this.debug)
-        {
-            if (this.debug.count && this.lastCount !== count)
-            {
-                Debug.one(count + ' updates', {panel: this.panels.count});
-                this.lastCount = count;
-            }
-            if (this.debug.percent)
-            {
-                this._debugPercent(other);
-            }
-        }
-    }
-
-    /**
-     * adds a function to the update loop
-     * @param {Function} funct
-     * @param {object} [options]
-     * @param {number} [options.time=0] in milliseconds to call this function
-     * @param {number} [options.FPS] - this replaces options.time and calls the function at the desired FPS
-     * @param {boolean} [options.once=false] - call only once and then remove from update queue
-     * @param {string} [options.percent] - name to track the percentage in the debug panel
-     */
-    add(funct, options)
-    {
-        options = options || {};
-        var time = options.time || (options.FPS ? 1000 / options.FPS : 0);
-        var update = {callback: funct, options: options, duration: time, elapsed: 0, once: options.once, pause: false};
-        this.list.push(update);
-        if (this.debug && options.percent)
-        {
-            this.percentageList[options.percent] = {current: 0, amounts: []};
-            var test = '';
-            for (var key in this.percentageList)
-            {
-                test += key + ': --%<br>';
-            }
-            Debug.one(test, {panel: this.panels.percent});
-            Debug.resize();
-        }
-        return update;
-    }
-
-    clear()
-    {
-        this.list = [];
-        if (this.debug && this.debug.percent)
-        {
-            this.percentageList = {};
-            this.percentageList['Other'] = {current: 0, amounts: []};
-            Debug.resize();
-        }
-    }
-
-    /**
-     * removes an update from the loop
-     * @param {object} update - object returned by this.add()
-     */
-    remove(update)
-    {
-        if (update)
-        {
-            var index = this.list.indexOf(update);
-            if (index !== -1)
-            {
-                this.list.splice(index, 1);
-            }
-        }
-    }
-
-    /**
-     * starts the update loop
-     */
-    update()
-    {
-        if (this.pause === true)
-        {
-            this.updateOff = true;
-            return;
-        }
-        var current = performance.now();
-        var elapsed;
-        if (this.lastUpdate === 0)
-        {
-            elapsed = 0;
-        }
-        else
-        {
-            elapsed = current - this.lastUpdate;
-            elapsed = elapsed > this.maxChange ? this.maxChange : elapsed;
-        }
-        if (this.FPS === 60 || elapsed === 0 || elapsed >= this.FPSActual)
-        {
-            this._updateAll(elapsed);
-            this.lastUpdate = current;
-            if (this.debug && this.debug.FPS)
-            {
-                this._debugUpdate(current);
-            }
-        }
-        if (this.onLoop)
-        {
-            this.onLoop();
-        }
-        if (typeof requestAnimationFrame === 'function')
-        {
-            requestAnimationFrame(this.update.bind(this));
-        }
-        else
-        {
-            setTimeout(this.update.bind(this), this.FPSActual);
-        }
-    }
-
-    /**
-     * Starts a page visibility event listener running, or window.onpagehide/onpageshow if not supported by the browser. Also listens for window.onblur and window.onfocus.
-     * based on Phaser: https://github.com/photonstorm/phaser (MIT license)
-     * @private
-     */
-    checkVisibility()
-    {
-        var hiddenVar;
-        if (document.webkitHidden !== undefined)
-        {
-            hiddenVar = 'webkitvisibilitychange';
-        }
-        else if (document.mozHidden !== undefined)
-        {
-            hiddenVar = 'mozvisibilitychange';
-        }
-        else if (document.msHidden !== undefined)
-        {
-            hiddenVar = 'msvisibilitychange';
-        }
-        else if (document.hidden !== undefined)
-        {
-            hiddenVar = 'visibilitychange';
-        }
-        else
-        {
-            hiddenVar = null;
-        }
-
-        //  Does browser support it? If not (like in IE9 or old Android) we need to fall back to blur/focus
-        if (hiddenVar)
-        {
-            document.addEventListener(hiddenVar, this.visibilityChange.bind(this), false);
-        }
-
-        window.onblur = this.visibilityChange.bind(this);
-        window.onfocus = this.visibilityChange.bind(this);
-
-        window.onpagehide = this.visibilityChange.bind(this);
-        window.onpageshow = this.visibilityChange.bind(this);
-    }
-
-    /**
-     * Callback for checkVisibility()
-     * based on Phaser: https://github.com/photonstorm/phaser (MIT license)
-     * @private
-     */
-    visibilityChange(event)
-    {
-        if (event.type === 'pagehide' || event.type === 'blur' || event.type === 'pageshow' || event.type === 'focus')
-        {
-            if (event.type === 'pagehide' || event.type === 'blur')
-            {
-                this.pauseGame();
-            }
-            else if (event.type === 'pageshow' || event.type === 'focus')
-            {
-                this.resumeGame(event);
-            }
-            return;
-        }
-
-        if (document.hidden || document.mozHidden || document.msHidden || document.webkitHidden || event.type === 'pause')
-        {
-            this.pauseGame(event);
-        }
-    }
-
-    /**
-     * adds debug panels (uses github.com/davidfig/debug)
-     * @private
-     */
-    _debugInit()
-    {
-        if (this.debug.FPS)
-        {
-            this.panels.fps = Debug.add('FPS', {text: '-- FPS'});
-            this.panels.meter = Debug.addMeter('panel');
-        }
-        if (this.debug.count)
-        {
-            this.panels.count = Debug.add('Updates', {text: '0 updates'});
-        }
-        if (this.debug.percent)
-        {
-            this.panels.percent = Debug.add('percentages', {style: {textAlign: 'right'}});
-            this.percentageList['Other'] = {current: 0, amounts: []};
-        }
-    }
-
-    /**
-     * pause debug
-     * @private
-     */
-    _debugPause()
-    {
-        if (this.debug.FPS)
-        {
-            Debug.one('-- FPS', {panel: this.panels.fps});
-        }
-    }
-
-    /**
-     * update debug panels
-     * @param {number} current time
-     * @private
-     */
-    _debugUpdate(current)
-    {
-        this.frameNumber++;
-        var currentTime = performance.now() - this.startTime;
-
-        // skip the first half second to get rid of garbage
-        if (currentTime > 500)
-        {
-            if (this.startTime !== 0)
-            {
-                this.lastFPS = Math.floor(this.frameNumber / (currentTime / 1000));
-                if (this.lastFPS >= 60 - this.tolerance && this.lastFPS <= 60 + this.tolerance)
-                {
-                    this.lastFPS = 60;
-                }
-            }
-            this.startTime = performance.now();
-            this.frameNumber = 0;
-        }
-        Debug.one(this.lastFPS + ' FPS', {panel: this.panels.fps});
-        var time = performance.now() - current;
-
-        // 16.7 is hard coded for 60 FPS. Probably should figure out the real amount for the current FPS
-        var expected = (16.7 - time) / 16.7;
-        Debug.meter(expected, {panel: this.panels.meter});
-    }
-
-    /**
-     * update percentage panel
-     * @param {number} other time
-     * @private
-     */
-    _debugPercent(other)
-    {
-        var change = this.percentageList['Other'];
-        change.amounts[change.current++] = other;
-        change.current %= this.rollingAverage;
-        var updates = [], all = 0;
-        for (var name in this.percentageList)
-        {
-            var change = this.percentageList[name];
-            var total = 0;
-            for (var i = 0; i < change.amounts.length; i++)
-            {
-                total += change.amounts[i];
-            }
-            total /= change.amounts.length;
-            all += total;
-            updates.push({name: name, total: total});
-        }
-        var result = '';
-        for (var i = 1; i < updates.length; i++)
-        {
-            var update = updates[i];
-            result += update.name + ': ' + Math.round(update.total / all * 100) + '%<br>';
-        }
-        var update = updates[0];
-        result += update.name + ': ' + (all === 0 ? '100' : Math.round(update.total / all * 100)) + '%<br>';
-        Debug.one(result, {panel: this.panels.percent});
-    }
-}
-
-module.exports = new Update();
-
-// for eslint
-/* globals performance, requestAnimationFrame, setTimeout, window, document */
-},{}],2:[function(require,module,exports){
 // shows the code in the demo
 window.onload = function()
 {
@@ -522,19 +15,21 @@ window.onload = function()
 
 // for eslint
 /* globals window, XMLHttpRequest, document */
-},{"highlight.js":5}],3:[function(require,module,exports){
+},{"highlight.js":4}],2:[function(require,module,exports){
 const Debug = require('yy-debug');
 const Update = require('../update/update.js');
 
 // initialize debug panels to track progress
 Debug.init();
+var loop = Debug.add('loop', {text: 'looping', panels: 'Looping'});
 
 // initialize update loop with debug options
-Update.init({debug: Debug, percent: true, FPS: true, count: true, onLoop: function() { Debug.one('looping: ' + Math.random()); } });
+Update.init({debug: Debug, percent: true, FPS: true, count: true, onLoop: function() { Debug.one('looping: ' + Math.random(), {panel: loop}); } });
 
 // add a call to testRandom every 100 MS and show it in Random Numbers debug panel
-Update.add(testRandom, {time: 100, percent: 'Random Numbers'});
+var randomLoop = Update.add(testRandom, {time: 100, percent: 'Random Numbers'});
 var random = Debug.add('random', {text: '0', panels: 'Random'});
+var randomLoopRemove = false;
 
 // add a call to testPI every update and track it in PI Calculation debug panel
 Update.add(testPI, {percent: 'PI Multiplication'});
@@ -546,6 +41,17 @@ Update.add(testDelay);
 Update.update();
 
 function testRandom()
+{
+    Debug.one(Math.random(), {panel: random});
+    if (randomLoopRemove)
+    {
+        Update.remove(randomLoop);
+        randomLoop = null;
+        randomLoopRemove = false;
+    }
+}
+
+function otherRandom()
 {
     Debug.one(Math.random(), {panel: random});
 }
@@ -577,14 +83,23 @@ document.body.addEventListener('keypress',
         }
         else if (code === 97) // a
         {
-            Update.add(testRandom, {percent: 'Random - '  + multiplication++});
+            Update.add(otherRandom, {percent: 'Random - '  + multiplication++});
         }
-        else // debug code to random panel (only works after a clear)
+        else if (code == 98) // b
         {
-            Debug.one(code, {panel: random});
+            if (randomLoop)
+            {
+                randomLoopRemove = true;
+            }
+            else
+            {
+                randomLoop = Update.add(testRandom, {time: 100, percent: 'Random Numbers'});
+            }
         }
     }
 );
+
+Debug.log('______Tests______<br>Press A to add an update<br>Press B to add/remove the random update during the update loop<br>Press C to clear the Random updates')
 
 // shows the code in the demo
 window.onload = function()
@@ -602,7 +117,7 @@ window.onload = function()
 
 // for eslint
 /* global document, window, XMLHttpRequest */
-},{"../update/update.js":1,"highlight.js":5,"yy-debug":172}],4:[function(require,module,exports){
+},{"../update/update.js":175,"highlight.js":4,"yy-debug":174}],3:[function(require,module,exports){
 /*
 Syntax highlighting with language autodetection.
 https://highlightjs.org/
@@ -797,7 +312,7 @@ https://highlightjs.org/
 
     while (original.length || highlighted.length) {
       var stream = selectStream();
-      result += escape(value.substr(processed, stream[0].offset - processed));
+      result += escape(value.substring(processed, stream[0].offset));
       processed = stream[0].offset;
       if (stream === original) {
         /*
@@ -983,7 +498,7 @@ https://highlightjs.org/
       match = top.lexemesRe.exec(mode_buffer);
 
       while (match) {
-        result += escape(mode_buffer.substr(last_index, match.index - last_index));
+        result += escape(mode_buffer.substring(last_index, match.index));
         keyword_match = keywordMatch(top, match);
         if (keyword_match) {
           relevance += keyword_match[1];
@@ -1120,7 +635,7 @@ https://highlightjs.org/
         match = top.terminators.exec(value);
         if (!match)
           break;
-        count = processLexeme(value.substr(index, match.index - index), match[0]);
+        count = processLexeme(value.substring(index, match.index), match[0]);
         index = match.index + count;
       }
       processLexeme(value.substr(index));
@@ -1422,7 +937,7 @@ https://highlightjs.org/
   return hljs;
 }));
 
-},{}],5:[function(require,module,exports){
+},{}],4:[function(require,module,exports){
 var hljs = require('./highlight');
 
 hljs.registerLanguage('1c', require('./languages/1c'));
@@ -1450,6 +965,7 @@ hljs.registerLanguage('brainfuck', require('./languages/brainfuck'));
 hljs.registerLanguage('cal', require('./languages/cal'));
 hljs.registerLanguage('capnproto', require('./languages/capnproto'));
 hljs.registerLanguage('ceylon', require('./languages/ceylon'));
+hljs.registerLanguage('clean', require('./languages/clean'));
 hljs.registerLanguage('clojure', require('./languages/clojure'));
 hljs.registerLanguage('clojure-repl', require('./languages/clojure-repl'));
 hljs.registerLanguage('cmake', require('./languages/cmake'));
@@ -1482,6 +998,7 @@ hljs.registerLanguage('erlang-repl', require('./languages/erlang-repl'));
 hljs.registerLanguage('erlang', require('./languages/erlang'));
 hljs.registerLanguage('excel', require('./languages/excel'));
 hljs.registerLanguage('fix', require('./languages/fix'));
+hljs.registerLanguage('flix', require('./languages/flix'));
 hljs.registerLanguage('fortran', require('./languages/fortran'));
 hljs.registerLanguage('fsharp', require('./languages/fsharp'));
 hljs.registerLanguage('gams', require('./languages/gams'));
@@ -1514,6 +1031,7 @@ hljs.registerLanguage('less', require('./languages/less'));
 hljs.registerLanguage('lisp', require('./languages/lisp'));
 hljs.registerLanguage('livecodeserver', require('./languages/livecodeserver'));
 hljs.registerLanguage('livescript', require('./languages/livescript'));
+hljs.registerLanguage('llvm', require('./languages/llvm'));
 hljs.registerLanguage('lsl', require('./languages/lsl'));
 hljs.registerLanguage('lua', require('./languages/lua'));
 hljs.registerLanguage('makefile', require('./languages/makefile'));
@@ -1593,7 +1111,7 @@ hljs.registerLanguage('xquery', require('./languages/xquery'));
 hljs.registerLanguage('zephir', require('./languages/zephir'));
 
 module.exports = hljs;
-},{"./highlight":4,"./languages/1c":6,"./languages/abnf":7,"./languages/accesslog":8,"./languages/actionscript":9,"./languages/ada":10,"./languages/apache":11,"./languages/applescript":12,"./languages/arduino":13,"./languages/armasm":14,"./languages/asciidoc":15,"./languages/aspectj":16,"./languages/autohotkey":17,"./languages/autoit":18,"./languages/avrasm":19,"./languages/awk":20,"./languages/axapta":21,"./languages/bash":22,"./languages/basic":23,"./languages/bnf":24,"./languages/brainfuck":25,"./languages/cal":26,"./languages/capnproto":27,"./languages/ceylon":28,"./languages/clojure":30,"./languages/clojure-repl":29,"./languages/cmake":31,"./languages/coffeescript":32,"./languages/coq":33,"./languages/cos":34,"./languages/cpp":35,"./languages/crmsh":36,"./languages/crystal":37,"./languages/cs":38,"./languages/csp":39,"./languages/css":40,"./languages/d":41,"./languages/dart":42,"./languages/delphi":43,"./languages/diff":44,"./languages/django":45,"./languages/dns":46,"./languages/dockerfile":47,"./languages/dos":48,"./languages/dsconfig":49,"./languages/dts":50,"./languages/dust":51,"./languages/ebnf":52,"./languages/elixir":53,"./languages/elm":54,"./languages/erb":55,"./languages/erlang":57,"./languages/erlang-repl":56,"./languages/excel":58,"./languages/fix":59,"./languages/fortran":60,"./languages/fsharp":61,"./languages/gams":62,"./languages/gauss":63,"./languages/gcode":64,"./languages/gherkin":65,"./languages/glsl":66,"./languages/go":67,"./languages/golo":68,"./languages/gradle":69,"./languages/groovy":70,"./languages/haml":71,"./languages/handlebars":72,"./languages/haskell":73,"./languages/haxe":74,"./languages/hsp":75,"./languages/htmlbars":76,"./languages/http":77,"./languages/inform7":78,"./languages/ini":79,"./languages/irpf90":80,"./languages/java":81,"./languages/javascript":82,"./languages/json":83,"./languages/julia":84,"./languages/kotlin":85,"./languages/lasso":86,"./languages/ldif":87,"./languages/less":88,"./languages/lisp":89,"./languages/livecodeserver":90,"./languages/livescript":91,"./languages/lsl":92,"./languages/lua":93,"./languages/makefile":94,"./languages/markdown":95,"./languages/mathematica":96,"./languages/matlab":97,"./languages/maxima":98,"./languages/mel":99,"./languages/mercury":100,"./languages/mipsasm":101,"./languages/mizar":102,"./languages/mojolicious":103,"./languages/monkey":104,"./languages/moonscript":105,"./languages/nginx":106,"./languages/nimrod":107,"./languages/nix":108,"./languages/nsis":109,"./languages/objectivec":110,"./languages/ocaml":111,"./languages/openscad":112,"./languages/oxygene":113,"./languages/parser3":114,"./languages/perl":115,"./languages/pf":116,"./languages/php":117,"./languages/pony":118,"./languages/powershell":119,"./languages/processing":120,"./languages/profile":121,"./languages/prolog":122,"./languages/protobuf":123,"./languages/puppet":124,"./languages/purebasic":125,"./languages/python":126,"./languages/q":127,"./languages/qml":128,"./languages/r":129,"./languages/rib":130,"./languages/roboconf":131,"./languages/rsl":132,"./languages/ruby":133,"./languages/ruleslanguage":134,"./languages/rust":135,"./languages/scala":136,"./languages/scheme":137,"./languages/scilab":138,"./languages/scss":139,"./languages/smali":140,"./languages/smalltalk":141,"./languages/sml":142,"./languages/sqf":143,"./languages/sql":144,"./languages/stan":145,"./languages/stata":146,"./languages/step21":147,"./languages/stylus":148,"./languages/subunit":149,"./languages/swift":150,"./languages/taggerscript":151,"./languages/tap":152,"./languages/tcl":153,"./languages/tex":154,"./languages/thrift":155,"./languages/tp":156,"./languages/twig":157,"./languages/typescript":158,"./languages/vala":159,"./languages/vbnet":160,"./languages/vbscript":162,"./languages/vbscript-html":161,"./languages/verilog":163,"./languages/vhdl":164,"./languages/vim":165,"./languages/x86asm":166,"./languages/xl":167,"./languages/xml":168,"./languages/xquery":169,"./languages/yaml":170,"./languages/zephir":171}],6:[function(require,module,exports){
+},{"./highlight":3,"./languages/1c":5,"./languages/abnf":6,"./languages/accesslog":7,"./languages/actionscript":8,"./languages/ada":9,"./languages/apache":10,"./languages/applescript":11,"./languages/arduino":12,"./languages/armasm":13,"./languages/asciidoc":14,"./languages/aspectj":15,"./languages/autohotkey":16,"./languages/autoit":17,"./languages/avrasm":18,"./languages/awk":19,"./languages/axapta":20,"./languages/bash":21,"./languages/basic":22,"./languages/bnf":23,"./languages/brainfuck":24,"./languages/cal":25,"./languages/capnproto":26,"./languages/ceylon":27,"./languages/clean":28,"./languages/clojure":30,"./languages/clojure-repl":29,"./languages/cmake":31,"./languages/coffeescript":32,"./languages/coq":33,"./languages/cos":34,"./languages/cpp":35,"./languages/crmsh":36,"./languages/crystal":37,"./languages/cs":38,"./languages/csp":39,"./languages/css":40,"./languages/d":41,"./languages/dart":42,"./languages/delphi":43,"./languages/diff":44,"./languages/django":45,"./languages/dns":46,"./languages/dockerfile":47,"./languages/dos":48,"./languages/dsconfig":49,"./languages/dts":50,"./languages/dust":51,"./languages/ebnf":52,"./languages/elixir":53,"./languages/elm":54,"./languages/erb":55,"./languages/erlang":57,"./languages/erlang-repl":56,"./languages/excel":58,"./languages/fix":59,"./languages/flix":60,"./languages/fortran":61,"./languages/fsharp":62,"./languages/gams":63,"./languages/gauss":64,"./languages/gcode":65,"./languages/gherkin":66,"./languages/glsl":67,"./languages/go":68,"./languages/golo":69,"./languages/gradle":70,"./languages/groovy":71,"./languages/haml":72,"./languages/handlebars":73,"./languages/haskell":74,"./languages/haxe":75,"./languages/hsp":76,"./languages/htmlbars":77,"./languages/http":78,"./languages/inform7":79,"./languages/ini":80,"./languages/irpf90":81,"./languages/java":82,"./languages/javascript":83,"./languages/json":84,"./languages/julia":85,"./languages/kotlin":86,"./languages/lasso":87,"./languages/ldif":88,"./languages/less":89,"./languages/lisp":90,"./languages/livecodeserver":91,"./languages/livescript":92,"./languages/llvm":93,"./languages/lsl":94,"./languages/lua":95,"./languages/makefile":96,"./languages/markdown":97,"./languages/mathematica":98,"./languages/matlab":99,"./languages/maxima":100,"./languages/mel":101,"./languages/mercury":102,"./languages/mipsasm":103,"./languages/mizar":104,"./languages/mojolicious":105,"./languages/monkey":106,"./languages/moonscript":107,"./languages/nginx":108,"./languages/nimrod":109,"./languages/nix":110,"./languages/nsis":111,"./languages/objectivec":112,"./languages/ocaml":113,"./languages/openscad":114,"./languages/oxygene":115,"./languages/parser3":116,"./languages/perl":117,"./languages/pf":118,"./languages/php":119,"./languages/pony":120,"./languages/powershell":121,"./languages/processing":122,"./languages/profile":123,"./languages/prolog":124,"./languages/protobuf":125,"./languages/puppet":126,"./languages/purebasic":127,"./languages/python":128,"./languages/q":129,"./languages/qml":130,"./languages/r":131,"./languages/rib":132,"./languages/roboconf":133,"./languages/rsl":134,"./languages/ruby":135,"./languages/ruleslanguage":136,"./languages/rust":137,"./languages/scala":138,"./languages/scheme":139,"./languages/scilab":140,"./languages/scss":141,"./languages/smali":142,"./languages/smalltalk":143,"./languages/sml":144,"./languages/sqf":145,"./languages/sql":146,"./languages/stan":147,"./languages/stata":148,"./languages/step21":149,"./languages/stylus":150,"./languages/subunit":151,"./languages/swift":152,"./languages/taggerscript":153,"./languages/tap":154,"./languages/tcl":155,"./languages/tex":156,"./languages/thrift":157,"./languages/tp":158,"./languages/twig":159,"./languages/typescript":160,"./languages/vala":161,"./languages/vbnet":162,"./languages/vbscript":164,"./languages/vbscript-html":163,"./languages/verilog":165,"./languages/vhdl":166,"./languages/vim":167,"./languages/x86asm":168,"./languages/xl":169,"./languages/xml":170,"./languages/xquery":171,"./languages/yaml":172,"./languages/zephir":173}],5:[function(require,module,exports){
 module.exports = function(hljs){
   var IDENT_RE_RU = '[a-zA-Zа-яА-Я][a-zA-Z0-9_а-яА-Я]*';
   var OneS_KEYWORDS = 'возврат дата для если и или иначе иначеесли исключение конецесли ' +
@@ -1672,7 +1190,7 @@ module.exports = function(hljs){
     ]
   };
 };
-},{}],7:[function(require,module,exports){
+},{}],6:[function(require,module,exports){
 module.exports = function(hljs) {
     var regexes = {
         ruleDeclaration: "^[a-zA-Z][a-zA-Z0-9-]*",
@@ -1743,7 +1261,7 @@ module.exports = function(hljs) {
       ]
     };
 };
-},{}],8:[function(require,module,exports){
+},{}],7:[function(require,module,exports){
 module.exports = function(hljs) {
   return {
     contains: [
@@ -1781,7 +1299,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],9:[function(require,module,exports){
+},{}],8:[function(require,module,exports){
 module.exports = function(hljs) {
   var IDENT_RE = '[a-zA-Z_$][a-zA-Z0-9_$]*';
   var IDENT_FUNC_RETURN_TYPE_RE = '([*]|[a-zA-Z_$][a-zA-Z0-9_$]*)';
@@ -1855,7 +1373,7 @@ module.exports = function(hljs) {
     illegal: /#/
   };
 };
-},{}],10:[function(require,module,exports){
+},{}],9:[function(require,module,exports){
 module.exports = // We try to support full Ada2012
 //
 // We highlight all appearances of types, keywords, literals (string, char, number, bool)
@@ -2028,7 +1546,7 @@ function(hljs) {
         ]
     };
 };
-},{}],11:[function(require,module,exports){
+},{}],10:[function(require,module,exports){
 module.exports = function(hljs) {
   var NUMBER = {className: 'number', begin: '[\\$%]\\d+'};
   return {
@@ -2074,7 +1592,7 @@ module.exports = function(hljs) {
     illegal: /\S/
   };
 };
-},{}],12:[function(require,module,exports){
+},{}],11:[function(require,module,exports){
 module.exports = function(hljs) {
   var STRING = hljs.inherit(hljs.QUOTE_STRING_MODE, {illegal: ''});
   var PARAMS = {
@@ -2160,7 +1678,7 @@ module.exports = function(hljs) {
     illegal: '//|->|=>|\\[\\['
   };
 };
-},{}],13:[function(require,module,exports){
+},{}],12:[function(require,module,exports){
 module.exports = function(hljs) {
   var CPP = hljs.getLanguage('cpp').exports;
 	return {
@@ -2260,7 +1778,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],14:[function(require,module,exports){
+},{}],13:[function(require,module,exports){
 module.exports = function(hljs) {
     //local labels: %?[FB]?[AT]?\d{1,2}\w+
   return {
@@ -2352,7 +1870,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],15:[function(require,module,exports){
+},{}],14:[function(require,module,exports){
 module.exports = function(hljs) {
   return {
     aliases: ['adoc'],
@@ -2540,7 +2058,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],16:[function(require,module,exports){
+},{}],15:[function(require,module,exports){
 module.exports = function (hljs) {
   var KEYWORDS =
     'false synchronized int abstract float private char boolean static null if const ' +
@@ -2684,7 +2202,7 @@ module.exports = function (hljs) {
     ]
   };
 };
-},{}],17:[function(require,module,exports){
+},{}],16:[function(require,module,exports){
 module.exports = function(hljs) {
   var BACKTICK_ESCAPE = {
     begin: /`[\s\S]/
@@ -2732,7 +2250,7 @@ module.exports = function(hljs) {
     ]
   }
 };
-},{}],18:[function(require,module,exports){
+},{}],17:[function(require,module,exports){
 module.exports = function(hljs) {
     var KEYWORDS = 'ByRef Case Const ContinueCase ContinueLoop ' +
         'Default Dim Do Else ElseIf EndFunc EndIf EndSelect ' +
@@ -2868,7 +2386,7 @@ module.exports = function(hljs) {
         ]
     }
 };
-},{}],19:[function(require,module,exports){
+},{}],18:[function(require,module,exports){
 module.exports = function(hljs) {
   return {
     case_insensitive: true,
@@ -2930,7 +2448,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],20:[function(require,module,exports){
+},{}],19:[function(require,module,exports){
 module.exports = function(hljs) {
   var VARIABLE = {
     className: 'variable',
@@ -2983,7 +2501,7 @@ module.exports = function(hljs) {
     ]
   }
 };
-},{}],21:[function(require,module,exports){
+},{}],20:[function(require,module,exports){
 module.exports = function(hljs) {
   return {
     keywords: 'false int abstract private char boolean static null if for true ' +
@@ -3014,7 +2532,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],22:[function(require,module,exports){
+},{}],21:[function(require,module,exports){
 module.exports = function(hljs) {
   var VAR = {
     className: 'variable',
@@ -3089,7 +2607,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],23:[function(require,module,exports){
+},{}],22:[function(require,module,exports){
 module.exports = function(hljs) {
   return {
     case_insensitive: true,
@@ -3140,7 +2658,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],24:[function(require,module,exports){
+},{}],23:[function(require,module,exports){
 module.exports = function(hljs){
   return {
     contains: [
@@ -3169,7 +2687,7 @@ module.exports = function(hljs){
     ]
   };
 };
-},{}],25:[function(require,module,exports){
+},{}],24:[function(require,module,exports){
 module.exports = function(hljs){
   var LITERAL = {
     className: 'literal',
@@ -3206,7 +2724,7 @@ module.exports = function(hljs){
     ]
   };
 };
-},{}],26:[function(require,module,exports){
+},{}],25:[function(require,module,exports){
 module.exports = function(hljs) {
   var KEYWORDS =
     'div mod in and or not xor asserterror begin case do downto else end exit for if of repeat then to ' +
@@ -3286,7 +2804,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],27:[function(require,module,exports){
+},{}],26:[function(require,module,exports){
 module.exports = function(hljs) {
   return {
     aliases: ['capnp'],
@@ -3335,7 +2853,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],28:[function(require,module,exports){
+},{}],27:[function(require,module,exports){
 module.exports = function(hljs) {
   // 2.3. Identifiers and keywords
   var KEYWORDS =
@@ -3400,6 +2918,31 @@ module.exports = function(hljs) {
         begin: '@[a-z]\\w*(?:\\:\"[^\"]*\")?'
       }
     ].concat(EXPRESSIONS)
+  };
+};
+},{}],28:[function(require,module,exports){
+module.exports = function(hljs) {
+  return {
+    aliases: ['clean','icl','dcl'],
+    keywords: {
+      keyword:
+        'if let in with where case of class instance otherwise ' +
+        'implementation definition system module from import qualified as ' +
+        'special code inline foreign export ccall stdcall generic derive ' +
+        'infix infixl infixr',
+      literal:
+        'True False'
+    },
+    contains: [
+
+      hljs.C_LINE_COMMENT_MODE,
+      hljs.C_BLOCK_COMMENT_MODE,
+      hljs.APOS_STRING_MODE,
+      hljs.QUOTE_STRING_MODE,
+      hljs.C_NUMBER_MODE,
+
+      {begin: '->|<-[|:]?|::|#!?|>>=|\\{\\||\\|\\}|:==|=:|\\.\\.|<>|`'} // relevance booster
+    ]
   };
 };
 },{}],29:[function(require,module,exports){
@@ -3556,7 +3099,7 @@ module.exports = function(hljs) {
     keyword:
       // JS keywords
       'in if for while finally new do return else break catch instanceof throw try this ' +
-      'switch continue typeof delete debugger super ' +
+      'switch continue typeof delete debugger super yield import export from as default await ' +
       // Coffee keywords
       'then unless until loop of by when and or is isnt not',
     literal:
@@ -3619,9 +3162,16 @@ module.exports = function(hljs) {
       begin: '@' + JS_IDENT_RE // relevance booster
     },
     {
-      begin: '`', end: '`',
+      subLanguage: 'javascript',
       excludeBegin: true, excludeEnd: true,
-      subLanguage: 'javascript'
+      variants: [
+        {
+          begin: '```', end: '```',
+        },
+        {
+          begin: '`', end: '`',
+        }
+      ]
     }
   ];
   SUBST.contains = EXPRESSIONS;
@@ -4986,21 +4536,16 @@ module.exports = function(hljs) {
     'specialize strict unaligned varargs ';
   var COMMENT_MODES = [
     hljs.C_LINE_COMMENT_MODE,
-    hljs.COMMENT(
-      /\{/,
-      /\}/,
-      {
-        relevance: 0
-      }
-    ),
-    hljs.COMMENT(
-      /\(\*/,
-      /\*\)/,
-      {
-        relevance: 10
-      }
-    )
+    hljs.COMMENT(/\{/, /\}/, {relevance: 0}),
+    hljs.COMMENT(/\(\*/, /\*\)/, {relevance: 10})
   ];
+  var DIRECTIVE = {
+    className: 'meta',
+    variants: [
+      {begin: /\{\$/, end: /\}/},
+      {begin: /\(\*\$/, end: /\*\)/}
+    ]
+  };
   var STRING = {
     className: 'string',
     begin: /'/, end: /'/,
@@ -5025,8 +4570,9 @@ module.exports = function(hljs) {
         className: 'params',
         begin: /\(/, end: /\)/,
         keywords: KEYWORDS,
-        contains: [STRING, CHAR_STRING]
-      }
+        contains: [STRING, CHAR_STRING, DIRECTIVE].concat(COMMENT_MODES)
+      },
+      DIRECTIVE
     ].concat(COMMENT_MODES)
   };
   return {
@@ -5038,7 +4584,8 @@ module.exports = function(hljs) {
       STRING, CHAR_STRING,
       hljs.NUMBER_MODE,
       CLASS,
-      FUNCTION
+      FUNCTION,
+      DIRECTIVE
     ].concat(COMMENT_MODES)
   };
 };
@@ -5950,6 +5497,51 @@ module.exports = function(hljs) {
   };
 };
 },{}],60:[function(require,module,exports){
+module.exports = function (hljs) {
+
+    var CHAR = {
+        className: 'string',
+        begin: /'(.|\\[xXuU][a-zA-Z0-9]+)'/
+    };
+
+    var STRING = {
+        className: 'string',
+        variants: [
+            {
+                begin: '"', end: '"'
+            }
+        ]
+    };
+
+    var NAME = {
+        className: 'title',
+        begin: /[^0-9\n\t "'(),.`{}\[\]:;][^\n\t "'(),.`{}\[\]:;]+|[^0-9\n\t "'(),.`{}\[\]:;=]/
+    };
+
+    var METHOD = {
+        className: 'function',
+        beginKeywords: 'def',
+        end: /[:={\[(\n;]/,
+        excludeEnd: true,
+        contains: [NAME]
+    };
+
+    return {
+        keywords: {
+            literal: 'true false',
+            keyword: 'case class def else enum if impl import in lat rel index let match namespace switch type yield with'
+        },
+        contains: [
+            hljs.C_LINE_COMMENT_MODE,
+            hljs.C_BLOCK_COMMENT_MODE,
+            CHAR,
+            STRING,
+            METHOD,
+            hljs.C_NUMBER_MODE
+        ]
+    };
+};
+},{}],61:[function(require,module,exports){
 module.exports = function(hljs) {
   var PARAMS = {
     className: 'params',
@@ -6020,7 +5612,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],61:[function(require,module,exports){
+},{}],62:[function(require,module,exports){
 module.exports = function(hljs) {
   var TYPEPARAM = {
     begin: '<', end: '>',
@@ -6079,7 +5671,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],62:[function(require,module,exports){
+},{}],63:[function(require,module,exports){
 module.exports = function (hljs) {
   var KEYWORDS = {
     'keyword':
@@ -6233,7 +5825,7 @@ module.exports = function (hljs) {
     ]
   };
 };
-},{}],63:[function(require,module,exports){
+},{}],64:[function(require,module,exports){
 module.exports = function(hljs) {
   var KEYWORDS = {
     keyword: 'and bool break call callexe checkinterrupt clear clearg closeall cls comlog compile ' +
@@ -6455,7 +6047,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],64:[function(require,module,exports){
+},{}],65:[function(require,module,exports){
 module.exports = function(hljs) {
     var GCODE_IDENT_RE = '[A-Z_][A-Z0-9_.]*';
     var GCODE_CLOSE_RE = '\\%';
@@ -6522,7 +6114,7 @@ module.exports = function(hljs) {
         ].concat(GCODE_CODE)
     };
 };
-},{}],65:[function(require,module,exports){
+},{}],66:[function(require,module,exports){
 module.exports = function (hljs) {
   return {
     aliases: ['feature'],
@@ -6559,13 +6151,13 @@ module.exports = function (hljs) {
     ]
   };
 };
-},{}],66:[function(require,module,exports){
+},{}],67:[function(require,module,exports){
 module.exports = function(hljs) {
   return {
     keywords: {
       keyword:
         // Statements
-        'break continue discard do else for if return while' +
+        'break continue discard do else for if return while switch case default ' +
         // Qualifiers
         'attribute binding buffer ccw centroid centroid varying coherent column_major const cw ' +
         'depth_any depth_greater depth_less depth_unchanged early_fragment_tests equal_spacing ' +
@@ -6676,7 +6268,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],67:[function(require,module,exports){
+},{}],68:[function(require,module,exports){
 module.exports = function(hljs) {
   var GO_KEYWORDS = {
     keyword:
@@ -6730,7 +6322,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],68:[function(require,module,exports){
+},{}],69:[function(require,module,exports){
 module.exports = function(hljs) {
     return {
       keywords: {
@@ -6753,7 +6345,7 @@ module.exports = function(hljs) {
       ]
     }
 };
-},{}],69:[function(require,module,exports){
+},{}],70:[function(require,module,exports){
 module.exports = function(hljs) {
   return {
     case_insensitive: true,
@@ -6788,7 +6380,7 @@ module.exports = function(hljs) {
     ]
   }
 };
-},{}],70:[function(require,module,exports){
+},{}],71:[function(require,module,exports){
 module.exports = function(hljs) {
     return {
         keywords: {
@@ -6882,7 +6474,7 @@ module.exports = function(hljs) {
         illegal: /#|<\//
     }
 };
-},{}],71:[function(require,module,exports){
+},{}],72:[function(require,module,exports){
 module.exports = // TODO support filter tags like :javascript, support inline HTML
 function(hljs) {
   return {
@@ -6989,7 +6581,7 @@ function(hljs) {
     ]
   };
 };
-},{}],72:[function(require,module,exports){
+},{}],73:[function(require,module,exports){
 module.exports = function(hljs) {
   var BUILT_INS = {'builtin-name': 'each in with if else unless bindattr action collection debugger log outlet template unbound view yield'};
   return {
@@ -7023,7 +6615,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],73:[function(require,module,exports){
+},{}],74:[function(require,module,exports){
 module.exports = function(hljs) {
   var COMMENT = {
     variants: [
@@ -7145,65 +6737,119 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],74:[function(require,module,exports){
+},{}],75:[function(require,module,exports){
 module.exports = function(hljs) {
   var IDENT_RE = '[a-zA-Z_$][a-zA-Z0-9_$]*';
   var IDENT_FUNC_RETURN_TYPE_RE = '([*]|[a-zA-Z_$][a-zA-Z0-9_$]*)';
 
+  var HAXE_BASIC_TYPES = 'Int Float String Bool Dynamic Void Array ';
+
   return {
     aliases: ['hx'],
     keywords: {
-      keyword: 'break callback case cast catch class continue default do dynamic else enum extends extern ' +
-    'for function here if implements import in inline interface never new override package private ' +
-    'public return static super switch this throw trace try typedef untyped using var while',
-      literal: 'true false null'
+      keyword: 'break callback case cast catch continue default do dynamic else enum extern ' +
+               'for function here if import in inline never new override package private get set ' +
+               'public return static super switch this throw trace try typedef untyped using var while ' +
+               HAXE_BASIC_TYPES,
+      built_in:
+        'trace this',
+      literal:
+        'true false null _'
     },
     contains: [
-      hljs.APOS_STRING_MODE,
+      { className: 'string', // interpolate-able strings
+        begin: '\'', end: '\'',
+        contains: [
+          hljs.BACKSLASH_ESCAPE,
+          { className: 'subst', // interpolation
+            begin: '\\$\\{', end: '\\}'
+          },
+          { className: 'subst', // interpolation
+            begin: '\\$', end: '\\W}'
+          }
+        ]
+      },
       hljs.QUOTE_STRING_MODE,
       hljs.C_LINE_COMMENT_MODE,
       hljs.C_BLOCK_COMMENT_MODE,
       hljs.C_NUMBER_MODE,
-      {
-        className: 'class',
-        beginKeywords: 'class interface', end: '{', excludeEnd: true,
+      { className: 'meta', // compiler meta
+        begin: '@:', end: '$'
+      },
+      { className: 'meta', // compiler conditionals
+        begin: '#', end: '$',
+        keywords: {'meta-keyword': 'if else elseif end error'}
+      },
+      { className: 'type', // function types
+        begin: ':[ \t]*', end: '[^A-Za-z0-9_ \t\\->]',
+        excludeBegin: true, excludeEnd: true,
+        relevance: 0
+      },
+      { className: 'type', // types
+        begin: ':[ \t]*', end: '\\W',
+        excludeBegin: true, excludeEnd: true
+      },
+      { className: 'type', // instantiation
+        begin: 'new *', end: '\\W',
+        excludeBegin: true, excludeEnd: true
+      },
+      { className: 'class', // enums
+        beginKeywords: 'enum', end: '\\{',
         contains: [
-          {
-            beginKeywords: 'extends implements'
+          hljs.TITLE_MODE
+        ]
+      },
+      { className: 'class', // abstracts
+        beginKeywords: 'abstract', end: '[\\{$]',
+        contains: [
+          { className: 'type',
+            begin: '\\(', end: '\\)',
+            excludeBegin: true, excludeEnd: true
+          },
+          { className: 'type',
+            begin: 'from +', end: '\\W',
+            excludeBegin: true, excludeEnd: true
+          },
+          { className: 'type',
+            begin: 'to +', end: '\\W',
+            excludeBegin: true, excludeEnd: true
+          },
+          hljs.TITLE_MODE
+        ],
+        keywords: {
+          keyword: 'abstract from to'
+        }
+      },
+      { className: 'class', // classes
+        begin: '\\b(class|interface) +', end: '[\\{$]',  excludeEnd: true,
+        keywords: 'class interface',
+        contains: [
+          { className: 'keyword',
+            begin: '\\b(extends|implements) +',
+            keywords: 'extends implements',
+            contains: [
+              {
+                className: 'type',
+                begin: hljs.IDENT_RE,
+                relevance: 0
+              }
+            ]
           },
           hljs.TITLE_MODE
         ]
       },
-      {
-        className: 'meta',
-        begin: '#', end: '$',
-        keywords: {'meta-keyword': 'if else elseif end error'}
-      },
-      {
-        className: 'function',
-        beginKeywords: 'function', end: '[{;]', excludeEnd: true,
+      { className: 'function',
+        beginKeywords: 'function', end: '\\(', excludeEnd: true,
         illegal: '\\S',
         contains: [
-          hljs.TITLE_MODE,
-          {
-            className: 'params',
-            begin: '\\(', end: '\\)',
-            contains: [
-              hljs.APOS_STRING_MODE,
-              hljs.QUOTE_STRING_MODE,
-              hljs.C_LINE_COMMENT_MODE,
-              hljs.C_BLOCK_COMMENT_MODE
-            ]
-          },
-          {
-            begin: ':\\s*' + IDENT_FUNC_RETURN_TYPE_RE
-          }
+          hljs.TITLE_MODE
         ]
       }
-    ]
+    ],
+    illegal: /<\//
   };
 };
-},{}],75:[function(require,module,exports){
+},{}],76:[function(require,module,exports){
 module.exports = function(hljs) {
   return {
     case_insensitive: true,
@@ -7249,7 +6895,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],76:[function(require,module,exports){
+},{}],77:[function(require,module,exports){
 module.exports = function(hljs) {
   var BUILT_INS = 'action collection component concat debugger each each-in else get hash if input link-to loc log mut outlet partial query-params render textarea unbound unless with yield view';
 
@@ -7320,7 +6966,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],77:[function(require,module,exports){
+},{}],78:[function(require,module,exports){
 module.exports = function(hljs) {
   var VERSION = 'HTTP/[0-9\\.]+';
   return {
@@ -7361,7 +7007,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],78:[function(require,module,exports){
+},{}],79:[function(require,module,exports){
 module.exports = function(hljs) {
   var START_BRACKET = '\\[';
   var END_BRACKET = '\\]';
@@ -7418,7 +7064,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],79:[function(require,module,exports){
+},{}],80:[function(require,module,exports){
 module.exports = function(hljs) {
   var STRING = {
     className: "string",
@@ -7484,7 +7130,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],80:[function(require,module,exports){
+},{}],81:[function(require,module,exports){
 module.exports = function(hljs) {
   var PARAMS = {
     className: 'params',
@@ -7560,15 +7206,16 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],81:[function(require,module,exports){
+},{}],82:[function(require,module,exports){
 module.exports = function(hljs) {
-  var GENERIC_IDENT_RE = hljs.UNDERSCORE_IDENT_RE + '(<' + hljs.UNDERSCORE_IDENT_RE + '(\\s*,\\s*' + hljs.UNDERSCORE_IDENT_RE + ')*>)?';
+  var JAVA_IDENT_RE = '[\u00C0-\u02B8a-zA-Z_$][\u00C0-\u02B8a-zA-Z_$0-9]*';
+  var GENERIC_IDENT_RE = JAVA_IDENT_RE + '(<' + JAVA_IDENT_RE + '(\\s*,\\s*' + JAVA_IDENT_RE + ')*>)?';
   var KEYWORDS =
     'false synchronized int abstract float private char boolean static null if const ' +
     'for true while long strictfp finally protected import native final void ' +
     'enum else break transient catch instanceof byte super volatile case assert short ' +
     'package default double public try this switch continue throws protected public private ' +
-    'module requires exports';
+    'module requires exports do';
 
   // https://docs.oracle.com/javase/7/docs/technotes/guides/language/underscores-literals.html
   var JAVA_NUMBER_RE = '\\b' +
@@ -7667,7 +7314,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],82:[function(require,module,exports){
+},{}],83:[function(require,module,exports){
 module.exports = function(hljs) {
   var IDENT_RE = '[A-Za-z$_][0-9A-Za-z$_]*';
   var KEYWORDS = {
@@ -7838,7 +7485,7 @@ module.exports = function(hljs) {
     illegal: /#(?!!)/
   };
 };
-},{}],83:[function(require,module,exports){
+},{}],84:[function(require,module,exports){
 module.exports = function(hljs) {
   var LITERALS = {literal: 'true false null'};
   var TYPES = [
@@ -7875,7 +7522,7 @@ module.exports = function(hljs) {
     illegal: '\\S'
   };
 };
-},{}],84:[function(require,module,exports){
+},{}],85:[function(require,module,exports){
 module.exports = function(hljs) {
   // Since there are numerous special names in Julia, it is too much trouble
   // to maintain them by hand. Hence these names (i.e. keywords, literals and
@@ -8053,7 +7700,7 @@ module.exports = function(hljs) {
 
   return DEFAULT;
 };
-},{}],85:[function(require,module,exports){
+},{}],86:[function(require,module,exports){
 module.exports = function (hljs) {
   var KEYWORDS = {
     keyword:
@@ -8227,7 +7874,7 @@ module.exports = function (hljs) {
     ]
   };
 };
-},{}],86:[function(require,module,exports){
+},{}],87:[function(require,module,exports){
 module.exports = function(hljs) {
   var LASSO_IDENT_RE = '[a-zA-Z_][\\w.]*';
   var LASSO_ANGLE_RE = '<\\?(lasso(script)?|=)';
@@ -8390,7 +8037,7 @@ module.exports = function(hljs) {
     ].concat(LASSO_CODE)
   };
 };
-},{}],87:[function(require,module,exports){
+},{}],88:[function(require,module,exports){
 module.exports = function(hljs) {
   return {
     contains: [
@@ -8413,7 +8060,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],88:[function(require,module,exports){
+},{}],89:[function(require,module,exports){
 module.exports = function(hljs) {
   var IDENT_RE        = '[\\w-]+'; // yes, Less identifiers may begin with a digit
   var INTERP_IDENT_RE = '(' + IDENT_RE + '|@{' + IDENT_RE + '})';
@@ -8553,7 +8200,7 @@ module.exports = function(hljs) {
     contains: RULES
   };
 };
-},{}],89:[function(require,module,exports){
+},{}],90:[function(require,module,exports){
 module.exports = function(hljs) {
   var LISP_IDENT_RE = '[a-zA-Z_\\-\\+\\*\\/\\<\\=\\>\\&\\#][a-zA-Z0-9_\\-\\+\\*\\/\\<\\=\\>\\&\\#!]*';
   var MEC_RE = '\\|[^]*?\\|';
@@ -8656,7 +8303,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],90:[function(require,module,exports){
+},{}],91:[function(require,module,exports){
 module.exports = function(hljs) {
   var VARIABLE = {
     begin: '\\b[gtps][A-Z]+[A-Za-z0-9_\\-]*\\b|\\$_[A-Z]+',
@@ -8813,7 +8460,7 @@ module.exports = function(hljs) {
     illegal: ';$|^\\[|^=|&|{'
   };
 };
-},{}],91:[function(require,module,exports){
+},{}],92:[function(require,module,exports){
 module.exports = function(hljs) {
   var KEYWORDS = {
     keyword:
@@ -8962,7 +8609,96 @@ module.exports = function(hljs) {
     ])
   };
 };
-},{}],92:[function(require,module,exports){
+},{}],93:[function(require,module,exports){
+module.exports = function(hljs) {
+  var identifier = '([-a-zA-Z$._][\\w\\-$.]*)';
+  return {
+    //lexemes: '[.%]?' + hljs.IDENT_RE,
+    keywords:
+      'begin end true false declare define global ' +
+      'constant private linker_private internal ' +
+      'available_externally linkonce linkonce_odr weak ' +
+      'weak_odr appending dllimport dllexport common ' +
+      'default hidden protected extern_weak external ' +
+      'thread_local zeroinitializer undef null to tail ' +
+      'target triple datalayout volatile nuw nsw nnan ' +
+      'ninf nsz arcp fast exact inbounds align ' +
+      'addrspace section alias module asm sideeffect ' +
+      'gc dbg linker_private_weak attributes blockaddress ' +
+      'initialexec localdynamic localexec prefix unnamed_addr ' +
+      'ccc fastcc coldcc x86_stdcallcc x86_fastcallcc ' +
+      'arm_apcscc arm_aapcscc arm_aapcs_vfpcc ptx_device ' +
+      'ptx_kernel intel_ocl_bicc msp430_intrcc spir_func ' +
+      'spir_kernel x86_64_sysvcc x86_64_win64cc x86_thiscallcc ' +
+      'cc c signext zeroext inreg sret nounwind ' +
+      'noreturn noalias nocapture byval nest readnone ' +
+      'readonly inlinehint noinline alwaysinline optsize ssp ' +
+      'sspreq noredzone noimplicitfloat naked builtin cold ' +
+      'nobuiltin noduplicate nonlazybind optnone returns_twice ' +
+      'sanitize_address sanitize_memory sanitize_thread sspstrong ' +
+      'uwtable returned type opaque eq ne slt sgt ' +
+      'sle sge ult ugt ule uge oeq one olt ogt ' +
+      'ole oge ord uno ueq une x acq_rel acquire ' +
+      'alignstack atomic catch cleanup filter inteldialect ' +
+      'max min monotonic nand personality release seq_cst ' +
+      'singlethread umax umin unordered xchg add fadd ' +
+      'sub fsub mul fmul udiv sdiv fdiv urem srem ' +
+      'frem shl lshr ashr and or xor icmp fcmp ' +
+      'phi call trunc zext sext fptrunc fpext uitofp ' +
+      'sitofp fptoui fptosi inttoptr ptrtoint bitcast ' +
+      'addrspacecast select va_arg ret br switch invoke ' +
+      'unwind unreachable indirectbr landingpad resume ' +
+      'malloc alloca free load store getelementptr ' +
+      'extractelement insertelement shufflevector getresult ' +
+      'extractvalue insertvalue atomicrmw cmpxchg fence ' +
+      'argmemonly double',
+    contains: [
+      {
+        className: 'keyword',
+        begin: 'i\\d+'
+      },
+      hljs.COMMENT(
+        ';', '\\n', {relevance: 0}
+      ),
+      // Double quote string
+      hljs.QUOTE_STRING_MODE,
+      {
+        className: 'string',
+        variants: [
+          // Double-quoted string
+          { begin: '"', end: '[^\\\\]"' },
+        ],
+        relevance: 0
+      },
+      {
+        className: 'title',
+        variants: [
+          { begin: '@' + identifier },
+          { begin: '@\\d+' },
+          { begin: '!' + identifier },
+          { begin: '!\\d+' + identifier }
+        ]
+      },
+      {
+        className: 'symbol',
+        variants: [
+          { begin: '%' + identifier },
+          { begin: '%\\d+' },
+          { begin: '#\\d+' },
+        ]
+      },
+      {
+        className: 'number',
+        variants: [
+            { begin: '0[xX][a-fA-F0-9]+' },
+            { begin: '-?\\d+(?:[.]\\d+)?(?:[eE][-+]?\\d+(?:[.]\\d+)?)?' }
+        ],
+        relevance: 0
+      },
+    ]
+  };
+};
+},{}],94:[function(require,module,exports){
 module.exports = function(hljs) {
 
     var LSL_STRING_ESCAPE_CHARS = {
@@ -9045,7 +8781,7 @@ module.exports = function(hljs) {
         ]
     };
 };
-},{}],93:[function(require,module,exports){
+},{}],95:[function(require,module,exports){
 module.exports = function(hljs) {
   var OPENING_LONG_BRACKET = '\\[=*\\[';
   var CLOSING_LONG_BRACKET = '\\]=*\\]';
@@ -9101,7 +8837,7 @@ module.exports = function(hljs) {
     ])
   };
 };
-},{}],94:[function(require,module,exports){
+},{}],96:[function(require,module,exports){
 module.exports = function(hljs) {
   var VARIABLE = {
     className: 'variable',
@@ -9146,7 +8882,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],95:[function(require,module,exports){
+},{}],97:[function(require,module,exports){
 module.exports = function(hljs) {
   return {
     aliases: ['md', 'mkdown', 'mkd'],
@@ -9254,7 +8990,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],96:[function(require,module,exports){
+},{}],98:[function(require,module,exports){
 module.exports = function(hljs) {
   return {
     aliases: ['mma'],
@@ -9312,7 +9048,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],97:[function(require,module,exports){
+},{}],99:[function(require,module,exports){
 module.exports = function(hljs) {
   var COMMON_CONTAINS = [
     hljs.C_NUMBER_MODE,
@@ -9400,7 +9136,7 @@ module.exports = function(hljs) {
     ].concat(COMMON_CONTAINS)
   };
 };
-},{}],98:[function(require,module,exports){
+},{}],100:[function(require,module,exports){
 module.exports = function(hljs) {
   var KEYWORDS = 'if then else elseif for thru do while unless step in and or not';
   var LITERALS = 'true false unknown inf minf ind und %e %i %pi %phi %gamma';
@@ -9806,7 +9542,7 @@ module.exports = function(hljs) {
     illegal: /@/
   }
 };
-},{}],99:[function(require,module,exports){
+},{}],101:[function(require,module,exports){
 module.exports = function(hljs) {
   return {
     keywords:
@@ -10031,7 +9767,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],100:[function(require,module,exports){
+},{}],102:[function(require,module,exports){
 module.exports = function(hljs) {
   var KEYWORDS = {
     keyword:
@@ -10113,7 +9849,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],101:[function(require,module,exports){
+},{}],103:[function(require,module,exports){
 module.exports = function(hljs) {
     //local labels: %?[FB]?[AT]?\d{1,2}\w+
   return {
@@ -10199,7 +9935,7 @@ module.exports = function(hljs) {
     illegal: '\/'
   };
 };
-},{}],102:[function(require,module,exports){
+},{}],104:[function(require,module,exports){
 module.exports = function(hljs) {
   return {
     keywords:
@@ -10218,7 +9954,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],103:[function(require,module,exports){
+},{}],105:[function(require,module,exports){
 module.exports = function(hljs) {
   return {
     subLanguage: 'xml',
@@ -10243,7 +9979,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],104:[function(require,module,exports){
+},{}],106:[function(require,module,exports){
 module.exports = function(hljs) {
   var NUMBER = {
     className: 'number', relevance: 0,
@@ -10318,7 +10054,7 @@ module.exports = function(hljs) {
     ]
   }
 };
-},{}],105:[function(require,module,exports){
+},{}],107:[function(require,module,exports){
 module.exports = function(hljs) {
   var KEYWORDS = {
     keyword:
@@ -10430,7 +10166,7 @@ module.exports = function(hljs) {
     ])
   };
 };
-},{}],106:[function(require,module,exports){
+},{}],108:[function(require,module,exports){
 module.exports = function(hljs) {
   var VAR = {
     className: 'variable',
@@ -10523,7 +10259,7 @@ module.exports = function(hljs) {
     illegal: '[^\\s\\}]'
   };
 };
-},{}],107:[function(require,module,exports){
+},{}],109:[function(require,module,exports){
 module.exports = function(hljs) {
   return {
     aliases: ['nim'],
@@ -10578,7 +10314,7 @@ module.exports = function(hljs) {
     ]
   }
 };
-},{}],108:[function(require,module,exports){
+},{}],110:[function(require,module,exports){
 module.exports = function(hljs) {
   var NIX_KEYWORDS = {
     keyword:
@@ -10627,69 +10363,90 @@ module.exports = function(hljs) {
     contains: EXPRESSIONS
   };
 };
-},{}],109:[function(require,module,exports){
+},{}],111:[function(require,module,exports){
 module.exports = function(hljs) {
   var CONSTANTS = {
     className: 'variable',
-    begin: '\\$(ADMINTOOLS|APPDATA|CDBURN_AREA|CMDLINE|COMMONFILES32|COMMONFILES64|COMMONFILES|COOKIES|DESKTOP|DOCUMENTS|EXEDIR|EXEFILE|EXEPATH|FAVORITES|FONTS|HISTORY|HWNDPARENT|INSTDIR|INTERNET_CACHE|LANGUAGE|LOCALAPPDATA|MUSIC|NETHOOD|OUTDIR|PICTURES|PLUGINSDIR|PRINTHOOD|PROFILE|PROGRAMFILES32|PROGRAMFILES64|PROGRAMFILES|QUICKLAUNCH|RECENT|RESOURCES_LOCALIZED|RESOURCES|SENDTO|SMPROGRAMS|SMSTARTUP|STARTMENU|SYSDIR|TEMP|TEMPLATES|VIDEOS|WINDIR)'
+    begin: /\$(ADMINTOOLS|APPDATA|CDBURN_AREA|CMDLINE|COMMONFILES32|COMMONFILES64|COMMONFILES|COOKIES|DESKTOP|DOCUMENTS|EXEDIR|EXEFILE|EXEPATH|FAVORITES|FONTS|HISTORY|HWNDPARENT|INSTDIR|INTERNET_CACHE|LANGUAGE|LOCALAPPDATA|MUSIC|NETHOOD|OUTDIR|PICTURES|PLUGINSDIR|PRINTHOOD|PROFILE|PROGRAMFILES32|PROGRAMFILES64|PROGRAMFILES|QUICKLAUNCH|RECENT|RESOURCES_LOCALIZED|RESOURCES|SENDTO|SMPROGRAMS|SMSTARTUP|STARTMENU|SYSDIR|TEMP|TEMPLATES|VIDEOS|WINDIR)/
   };
 
   var DEFINES = {
     // ${defines}
     className: 'variable',
-    begin: '\\$+{[a-zA-Z0-9_]+}'
+    begin: /\$+{[\w\.:-]+}/
   };
 
   var VARIABLES = {
     // $variables
     className: 'variable',
-    begin: '\\$+[a-zA-Z0-9_]+',
-    illegal: '\\(\\){}'
+    begin: /\$+\w+/,
+    illegal: /\(\){}/
   };
 
   var LANGUAGES = {
     // $(language_strings)
     className: 'variable',
-    begin: '\\$+\\([a-zA-Z0-9_]+\\)'
+    begin: /\$+\([\w\^\.:-]+\)/
   };
 
   var PARAMETERS = {
     // command parameters
-    className: 'built_in',
+    className: 'params',
     begin: '(ARCHIVE|FILE_ATTRIBUTE_ARCHIVE|FILE_ATTRIBUTE_NORMAL|FILE_ATTRIBUTE_OFFLINE|FILE_ATTRIBUTE_READONLY|FILE_ATTRIBUTE_SYSTEM|FILE_ATTRIBUTE_TEMPORARY|HKCR|HKCU|HKDD|HKEY_CLASSES_ROOT|HKEY_CURRENT_CONFIG|HKEY_CURRENT_USER|HKEY_DYN_DATA|HKEY_LOCAL_MACHINE|HKEY_PERFORMANCE_DATA|HKEY_USERS|HKLM|HKPD|HKU|IDABORT|IDCANCEL|IDIGNORE|IDNO|IDOK|IDRETRY|IDYES|MB_ABORTRETRYIGNORE|MB_DEFBUTTON1|MB_DEFBUTTON2|MB_DEFBUTTON3|MB_DEFBUTTON4|MB_ICONEXCLAMATION|MB_ICONINFORMATION|MB_ICONQUESTION|MB_ICONSTOP|MB_OK|MB_OKCANCEL|MB_RETRYCANCEL|MB_RIGHT|MB_RTLREADING|MB_SETFOREGROUND|MB_TOPMOST|MB_USERICON|MB_YESNO|NORMAL|OFFLINE|READONLY|SHCTX|SHELL_CONTEXT|SYSTEM|TEMPORARY)'
   };
 
-  var COMPILER ={
+  var COMPILER = {
     // !compiler_flags
     className: 'keyword',
-    begin: '\\!(addincludedir|addplugindir|appendfile|cd|define|delfile|echo|else|endif|error|execute|finalize|getdllversionsystem|ifdef|ifmacrodef|ifmacrondef|ifndef|if|include|insertmacro|macroend|macro|makensis|packhdr|searchparse|searchreplace|tempfile|undef|verbose|warning)'
+    begin: /\!(addincludedir|addplugindir|appendfile|cd|define|delfile|echo|else|endif|error|execute|finalize|getdllversionsystem|ifdef|ifmacrodef|ifmacrondef|ifndef|if|include|insertmacro|macroend|macro|makensis|packhdr|searchparse|searchreplace|tempfile|undef|verbose|warning)/
+  };
+
+  var METACHARS = {
+    // $\n, $\r, $\t, $$
+    className: 'subst',
+    begin: /\$(\\[nrt]|\$)/
+  };
+
+  var PLUGINS = {
+    // plug::ins
+    className: 'class',
+    begin: /\w+\:\:\w+/
+  };
+
+    var STRING = {
+      className: 'string',
+      variants: [
+        {
+          begin: '"', end: '"'
+        },
+        {
+          begin: '\'', end: '\''
+        },
+        {
+          begin: '`', end: '`'
+        }
+      ],
+      illegal: /\n/,
+      contains: [
+        METACHARS,
+        CONSTANTS,
+        DEFINES,
+        VARIABLES,
+        LANGUAGES
+      ]
   };
 
   return {
     case_insensitive: false,
     keywords: {
       keyword:
-      'Abort AddBrandingImage AddSize AllowRootDirInstall AllowSkipFiles AutoCloseWindow BGFont BGGradient BrandingText BringToFront Call CallInstDLL Caption ChangeUI CheckBitmap ClearErrors CompletedText ComponentText CopyFiles CRCCheck CreateDirectory CreateFont CreateShortCut Delete DeleteINISec DeleteINIStr DeleteRegKey DeleteRegValue DetailPrint DetailsButtonText DirText DirVar DirVerify EnableWindow EnumRegKey EnumRegValue Exch Exec ExecShell ExecWait ExpandEnvStrings File FileBufSize FileClose FileErrorText FileOpen FileRead FileReadByte FileReadUTF16LE FileReadWord FileSeek FileWrite FileWriteByte FileWriteUTF16LE FileWriteWord FindClose FindFirst FindNext FindWindow FlushINI FunctionEnd GetCurInstType GetCurrentAddress GetDlgItem GetDLLVersion GetDLLVersionLocal GetErrorLevel GetFileTime GetFileTimeLocal GetFullPathName GetFunctionAddress GetInstDirError GetLabelAddress GetTempFileName Goto HideWindow Icon IfAbort IfErrors IfFileExists IfRebootFlag IfSilent InitPluginsDir InstallButtonText InstallColors InstallDir InstallDirRegKey InstProgressFlags InstType InstTypeGetText InstTypeSetText IntCmp IntCmpU IntFmt IntOp IsWindow LangString LicenseBkColor LicenseData LicenseForceSelection LicenseLangString LicenseText LoadLanguageFile LockWindow LogSet LogText ManifestDPIAware ManifestSupportedOS MessageBox MiscButtonText Name Nop OutFile Page PageCallbacks PageExEnd Pop Push Quit ReadEnvStr ReadINIStr ReadRegDWORD ReadRegStr Reboot RegDLL Rename RequestExecutionLevel ReserveFile Return RMDir SearchPath SectionEnd SectionGetFlags SectionGetInstTypes SectionGetSize SectionGetText SectionGroupEnd SectionIn SectionSetFlags SectionSetInstTypes SectionSetSize SectionSetText SendMessage SetAutoClose SetBrandingImage SetCompress SetCompressor SetCompressorDictSize SetCtlColors SetCurInstType SetDatablockOptimize SetDateSave SetDetailsPrint SetDetailsView SetErrorLevel SetErrors SetFileAttributes SetFont SetOutPath SetOverwrite SetPluginUnload SetRebootFlag SetRegView SetShellVarContext SetSilent ShowInstDetails ShowUninstDetails ShowWindow SilentInstall SilentUnInstall Sleep SpaceTexts StrCmp StrCmpS StrCpy StrLen SubCaption SubSectionEnd Unicode UninstallButtonText UninstallCaption UninstallIcon UninstallSubCaption UninstallText UninstPage UnRegDLL Var VIAddVersionKey VIFileVersion VIProductVersion WindowIcon WriteINIStr WriteRegBin WriteRegDWORD WriteRegExpandStr WriteRegStr WriteUninstaller XPStyle',
+      'Abort AddBrandingImage AddSize AllowRootDirInstall AllowSkipFiles AutoCloseWindow BGFont BGGradient BrandingText BringToFront Call CallInstDLL Caption ChangeUI CheckBitmap ClearErrors CompletedText ComponentText CopyFiles CRCCheck CreateDirectory CreateFont CreateShortCut Delete DeleteINISec DeleteINIStr DeleteRegKey DeleteRegValue DetailPrint DetailsButtonText DirText DirVar DirVerify EnableWindow EnumRegKey EnumRegValue Exch Exec ExecShell ExecWait ExpandEnvStrings File FileBufSize FileClose FileErrorText FileOpen FileRead FileReadByte FileReadUTF16LE FileReadWord FileSeek FileWrite FileWriteByte FileWriteUTF16LE FileWriteWord FindClose FindFirst FindNext FindWindow FlushINI FunctionEnd GetCurInstType GetCurrentAddress GetDlgItem GetDLLVersion GetDLLVersionLocal GetErrorLevel GetFileTime GetFileTimeLocal GetFullPathName GetFunctionAddress GetInstDirError GetLabelAddress GetTempFileName Goto HideWindow Icon IfAbort IfErrors IfFileExists IfRebootFlag IfSilent InitPluginsDir InstallButtonText InstallColors InstallDir InstallDirRegKey InstProgressFlags InstType InstTypeGetText InstTypeSetText IntCmp IntCmpU IntFmt IntOp IsWindow LangString LicenseBkColor LicenseData LicenseForceSelection LicenseLangString LicenseText LoadLanguageFile LockWindow LogSet LogText ManifestDPIAware ManifestSupportedOS MessageBox MiscButtonText Name Nop OutFile Page PageCallbacks PageExEnd Pop Push Quit ReadEnvStr ReadINIStr ReadRegDWORD ReadRegStr Reboot RegDLL Rename RequestExecutionLevel ReserveFile Return RMDir SearchPath SectionEnd SectionGetFlags SectionGetInstTypes SectionGetSize SectionGetText SectionGroupEnd SectionIn SectionSetFlags SectionSetInstTypes SectionSetSize SectionSetText SendMessage SetAutoClose SetBrandingImage SetCompress SetCompressor SetCompressorDictSize SetCtlColors SetCurInstType SetDatablockOptimize SetDateSave SetDetailsPrint SetDetailsView SetErrorLevel SetErrors SetFileAttributes SetFont SetOutPath SetOverwrite SetRebootFlag SetRegView SetShellVarContext SetSilent ShowInstDetails ShowUninstDetails ShowWindow SilentInstall SilentUnInstall Sleep SpaceTexts StrCmp StrCmpS StrCpy StrLen SubCaption Unicode UninstallButtonText UninstallCaption UninstallIcon UninstallSubCaption UninstallText UninstPage UnRegDLL Var VIAddVersionKey VIFileVersion VIProductVersion WindowIcon WriteINIStr WriteRegBin WriteRegDWORD WriteRegExpandStr WriteRegStr WriteUninstaller XPStyle',
       literal:
-      'admin all auto both colored current false force hide highest lastused leave listonly none normal notset off on open print show silent silentlog smooth textonly true user '
+      'admin all auto both bottom bzip2 colored components current custom directory false force hide highest ifdiff ifnewer instfiles lastused leave left license listonly lzma nevershow none normal notset off on open print right show silent silentlog smooth textonly top true try un.components un.custom un.directory un.instfiles un.license uninstConfirm user Win10 Win7 Win8 WinVista zlib'
     },
     contains: [
       hljs.HASH_COMMENT_MODE,
       hljs.C_BLOCK_COMMENT_MODE,
-      {
-        className: 'string',
-        begin: '"', end: '"',
-        illegal: '\\n',
-        contains: [
-          { // $\n, $\r, $\t, $$
-            begin: '\\$(\\\\(n|r|t)|\\$)'
-          },
-          CONSTANTS,
-          DEFINES,
-          VARIABLES,
-          LANGUAGES
-        ]
-      },
       hljs.COMMENT(
         ';',
         '$',
@@ -10699,21 +10456,20 @@ module.exports = function(hljs) {
       ),
       {
         className: 'function',
-        beginKeywords: 'Function PageEx Section SectionGroup SubSection', end: '$'
+        beginKeywords: 'Function PageEx Section SectionGroup', end: '$'
       },
+      STRING,
       COMPILER,
       DEFINES,
       VARIABLES,
       LANGUAGES,
       PARAMETERS,
-      hljs.NUMBER_MODE,
-      { // plug::ins
-        begin: hljs.IDENT_RE + '::' + hljs.IDENT_RE
-      }
+      PLUGINS,
+      hljs.NUMBER_MODE
     ]
   };
 };
-},{}],110:[function(require,module,exports){
+},{}],112:[function(require,module,exports){
 module.exports = function(hljs) {
   var API_CLASS = {
     className: 'built_in',
@@ -10804,7 +10560,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],111:[function(require,module,exports){
+},{}],113:[function(require,module,exports){
 module.exports = function(hljs) {
   /* missing support for heredoc-like string (OCaml 4.0.2+) */
   return {
@@ -10875,7 +10631,7 @@ module.exports = function(hljs) {
     ]
   }
 };
-},{}],112:[function(require,module,exports){
+},{}],114:[function(require,module,exports){
 module.exports = function(hljs) {
 	var SPECIAL_VARS = {
 		className: 'keyword',
@@ -10932,7 +10688,7 @@ module.exports = function(hljs) {
 		]
 	}
 };
-},{}],113:[function(require,module,exports){
+},{}],115:[function(require,module,exports){
 module.exports = function(hljs) {
   var OXYGENE_KEYWORDS = 'abstract add and array as asc aspect assembly async begin break block by case class concat const copy constructor continue '+
     'create default delegate desc distinct div do downto dynamic each else empty end ensure enum equals event except exit extension external false '+
@@ -11002,7 +10758,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],114:[function(require,module,exports){
+},{}],116:[function(require,module,exports){
 module.exports = function(hljs) {
   var CURLY_SUBCOMMENT = hljs.COMMENT(
     '{',
@@ -11050,7 +10806,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],115:[function(require,module,exports){
+},{}],117:[function(require,module,exports){
 module.exports = function(hljs) {
   var PERL_KEYWORDS = 'getpwent getservent quotemeta msgrcv scalar kill dbmclose undef lc ' +
     'ma syswrite tr send umask sysopen shmwrite vec qx utime local oct semctl localtime ' +
@@ -11207,7 +10963,7 @@ module.exports = function(hljs) {
     contains: PERL_DEFAULT_CONTAINS
   };
 };
-},{}],116:[function(require,module,exports){
+},{}],118:[function(require,module,exports){
 module.exports = function(hljs) {
   var MACRO = {
     className: 'variable',
@@ -11259,7 +11015,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],117:[function(require,module,exports){
+},{}],119:[function(require,module,exports){
 module.exports = function(hljs) {
   var VARIABLE = {
     begin: '\\$+[a-zA-Z_\x7f-\xff][a-zA-Z0-9_\x7f-\xff]*'
@@ -11386,7 +11142,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],118:[function(require,module,exports){
+},{}],120:[function(require,module,exports){
 module.exports = function(hljs) {
   var KEYWORDS = {
     keyword:
@@ -11477,7 +11233,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],119:[function(require,module,exports){
+},{}],121:[function(require,module,exports){
 module.exports = function(hljs) {
   var BACKTICK_ESCAPE = {
     begin: '`[\\s\\S]',
@@ -11544,7 +11300,7 @@ module.exports = function(hljs) {
     case_insensitive: true,
     keywords: {
       keyword: 'if else foreach return function do while until elseif begin for trap data dynamicparam end break throw param continue finally in switch exit filter try process catch',
-      built_in: 'Add-Computer Add-Content Add-History Add-JobTrigger Add-Member Add-PSSnapin Add-Type Checkpoint-Computer Clear-Content Clear-EventLog Clear-History Clear-Host Clear-Item Clear-ItemProperty Clear-Variable Compare-Object Complete-Transaction Connect-PSSession Connect-WSMan Convert-Path ConvertFrom-Csv ConvertFrom-Json ConvertFrom-SecureString ConvertFrom-StringData ConvertTo-Csv ConvertTo-Html ConvertTo-Json ConvertTo-SecureString ConvertTo-Xml Copy-Item Copy-ItemProperty Debug-Process Disable-ComputerRestore Disable-JobTrigger Disable-PSBreakpoint Disable-PSRemoting Disable-PSSessionConfiguration Disable-WSManCredSSP Disconnect-PSSession Disconnect-WSMan Disable-ScheduledJob Enable-ComputerRestore Enable-JobTrigger Enable-PSBreakpoint Enable-PSRemoting Enable-PSSessionConfiguration Enable-ScheduledJob Enable-WSManCredSSP Enter-PSSession Exit-PSSession Export-Alias Export-Clixml Export-Console Export-Counter Export-Csv Export-FormatData Export-ModuleMember Export-PSSession ForEach-Object Format-Custom Format-List Format-Table Format-Wide Get-Acl Get-Alias Get-AuthenticodeSignature Get-ChildItem Get-Command Get-ComputerRestorePoint Get-Content Get-ControlPanelItem Get-Counter Get-Credential Get-Culture Get-Date Get-Event Get-EventLog Get-EventSubscriber Get-ExecutionPolicy Get-FormatData Get-Host Get-HotFix Get-Help Get-History Get-IseSnippet Get-Item Get-ItemProperty Get-Job Get-JobTrigger Get-Location Get-Member Get-Module Get-PfxCertificate Get-Process Get-PSBreakpoint Get-PSCallStack Get-PSDrive Get-PSProvider Get-PSSession Get-PSSessionConfiguration Get-PSSnapin Get-Random Get-ScheduledJob Get-ScheduledJobOption Get-Service Get-TraceSource Get-Transaction Get-TypeData Get-UICulture Get-Unique Get-Variable Get-Verb Get-WinEvent Get-WmiObject Get-WSManCredSSP Get-WSManInstance Group-Object Import-Alias Import-Clixml Import-Counter Import-Csv Import-IseSnippet Import-LocalizedData Import-PSSession Import-Module Invoke-AsWorkflow Invoke-Command Invoke-Expression Invoke-History Invoke-Item Invoke-RestMethod Invoke-WebRequest Invoke-WmiMethod Invoke-WSManAction Join-Path Limit-EventLog Measure-Command Measure-Object Move-Item Move-ItemProperty New-Alias New-Event New-EventLog New-IseSnippet New-Item New-ItemProperty New-JobTrigger New-Object New-Module New-ModuleManifest New-PSDrive New-PSSession New-PSSessionConfigurationFile New-PSSessionOption New-PSTransportOption New-PSWorkflowExecutionOption New-PSWorkflowSession New-ScheduledJobOption New-Service New-TimeSpan New-Variable New-WebServiceProxy New-WinEvent New-WSManInstance New-WSManSessionOption Out-Default Out-File Out-GridView Out-Host Out-Null Out-Printer Out-String Pop-Location Push-Location Read-Host Receive-Job Register-EngineEvent Register-ObjectEvent Register-PSSessionConfiguration Register-ScheduledJob Register-WmiEvent Remove-Computer Remove-Event Remove-EventLog Remove-Item Remove-ItemProperty Remove-Job Remove-JobTrigger Remove-Module Remove-PSBreakpoint Remove-PSDrive Remove-PSSession Remove-PSSnapin Remove-TypeData Remove-Variable Remove-WmiObject Remove-WSManInstance Rename-Computer Rename-Item Rename-ItemProperty Reset-ComputerMachinePassword Resolve-Path Restart-Computer Restart-Service Restore-Computer Resume-Job Resume-Service Save-Help Select-Object Select-String Select-Xml Send-MailMessage Set-Acl Set-Alias Set-AuthenticodeSignature Set-Content Set-Date Set-ExecutionPolicy Set-Item Set-ItemProperty Set-JobTrigger Set-Location Set-PSBreakpoint Set-PSDebug Set-PSSessionConfiguration Set-ScheduledJob Set-ScheduledJobOption Set-Service Set-StrictMode Set-TraceSource Set-Variable Set-WmiInstance Set-WSManInstance Set-WSManQuickConfig Show-Command Show-ControlPanelItem Show-EventLog Sort-Object Split-Path Start-Job Start-Process Start-Service Start-Sleep Start-Transaction Start-Transcript Stop-Computer Stop-Job Stop-Process Stop-Service Stop-Transcript Suspend-Job Suspend-Service Tee-Object Test-ComputerSecureChannel Test-Connection Test-ModuleManifest Test-Path Test-PSSessionConfigurationFile Trace-Command Unblock-File Undo-Transaction Unregister-Event Unregister-PSSessionConfiguration Unregister-ScheduledJob Update-FormatData Update-Help Update-List Update-TypeData Use-Transaction Wait-Event Wait-Job Wait-Process Where-Object Write-Debug Write-Error Write-EventLog Write-Host Write-Output Write-Progress Write-Verbose Write-Warning',
+      built_in: 'Add-Computer Add-Content Add-History Add-JobTrigger Add-Member Add-PSSnapin Add-Type Checkpoint-Computer Clear-Content Clear-EventLog Clear-History Clear-Host Clear-Item Clear-ItemProperty Clear-Variable Compare-Object Complete-Transaction Connect-PSSession Connect-WSMan Convert-Path ConvertFrom-Csv ConvertFrom-Json ConvertFrom-SecureString ConvertFrom-StringData ConvertTo-Csv ConvertTo-Html ConvertTo-Json ConvertTo-SecureString ConvertTo-Xml Copy-Item Copy-ItemProperty Debug-Process Disable-ComputerRestore Disable-JobTrigger Disable-PSBreakpoint Disable-PSRemoting Disable-PSSessionConfiguration Disable-WSManCredSSP Disconnect-PSSession Disconnect-WSMan Disable-ScheduledJob Enable-ComputerRestore Enable-JobTrigger Enable-PSBreakpoint Enable-PSRemoting Enable-PSSessionConfiguration Enable-ScheduledJob Enable-WSManCredSSP Enter-PSSession Exit-PSSession Export-Alias Export-Clixml Export-Console Export-Counter Export-Csv Export-FormatData Export-ModuleMember Export-PSSession ForEach-Object Format-Custom Format-List Format-Table Format-Wide Get-Acl Get-Alias Get-AuthenticodeSignature Get-ChildItem Get-Command Get-ComputerRestorePoint Get-Content Get-ControlPanelItem Get-Counter Get-Credential Get-Culture Get-Date Get-Event Get-EventLog Get-EventSubscriber Get-ExecutionPolicy Get-FormatData Get-Host Get-HotFix Get-Help Get-History Get-IseSnippet Get-Item Get-ItemProperty Get-Job Get-JobTrigger Get-Location Get-Member Get-Module Get-PfxCertificate Get-Process Get-PSBreakpoint Get-PSCallStack Get-PSDrive Get-PSProvider Get-PSSession Get-PSSessionConfiguration Get-PSSnapin Get-Random Get-ScheduledJob Get-ScheduledJobOption Get-Service Get-TraceSource Get-Transaction Get-TypeData Get-UICulture Get-Unique Get-Variable Get-Verb Get-WinEvent Get-WmiObject Get-WSManCredSSP Get-WSManInstance Group-Object Import-Alias Import-Clixml Import-Counter Import-Csv Import-IseSnippet Import-LocalizedData Import-PSSession Import-Module Invoke-AsWorkflow Invoke-Command Invoke-Expression Invoke-History Invoke-Item Invoke-RestMethod Invoke-WebRequest Invoke-WmiMethod Invoke-WSManAction Join-Path Limit-EventLog Measure-Command Measure-Object Move-Item Move-ItemProperty New-Alias New-Event New-EventLog New-IseSnippet New-Item New-ItemProperty New-JobTrigger New-Object New-Module New-ModuleManifest New-PSDrive New-PSSession New-PSSessionConfigurationFile New-PSSessionOption New-PSTransportOption New-PSWorkflowExecutionOption New-PSWorkflowSession New-ScheduledJobOption New-Service New-TimeSpan New-Variable New-WebServiceProxy New-WinEvent New-WSManInstance New-WSManSessionOption Out-Default Out-File Out-GridView Out-Host Out-Null Out-Printer Out-String Pop-Location Push-Location Read-Host Receive-Job Register-EngineEvent Register-ObjectEvent Register-PSSessionConfiguration Register-ScheduledJob Register-WmiEvent Remove-Computer Remove-Event Remove-EventLog Remove-Item Remove-ItemProperty Remove-Job Remove-JobTrigger Remove-Module Remove-PSBreakpoint Remove-PSDrive Remove-PSSession Remove-PSSnapin Remove-TypeData Remove-Variable Remove-WmiObject Remove-WSManInstance Rename-Computer Rename-Item Rename-ItemProperty Reset-ComputerMachinePassword Resolve-Path Restart-Computer Restart-Service Restore-Computer Resume-Job Resume-Service Save-Help Select-Object Select-String Select-Xml Send-MailMessage Set-Acl Set-Alias Set-AuthenticodeSignature Set-Content Set-Date Set-ExecutionPolicy Set-Item Set-ItemProperty Set-JobTrigger Set-Location Set-PSBreakpoint Set-PSDebug Set-PSSessionConfiguration Set-ScheduledJob Set-ScheduledJobOption Set-Service Set-StrictMode Set-TraceSource Set-Variable Set-WmiInstance Set-WSManInstance Set-WSManQuickConfig Show-Command Show-ControlPanelItem Show-EventLog Sort-Object Split-Path Start-Job Start-Process Start-Service Start-Sleep Start-Transaction Start-Transcript Stop-Computer Stop-Job Stop-Process Stop-Service Stop-Transcript Suspend-Job Suspend-Service Tee-Object Test-ComputerSecureChannel Test-Connection Test-ModuleManifest Test-Path Test-PSSessionConfigurationFile Trace-Command Unblock-File Undo-Transaction Unregister-Event Unregister-PSSessionConfiguration Unregister-ScheduledJob Update-FormatData Update-Help Update-List Update-TypeData Use-Transaction Wait-Event Wait-Job Wait-Process Where-Object Write-Debug Write-Error Write-EventLog Write-Host Write-Output Write-Progress Write-Verbose Write-Warning Add-MDTPersistentDrive Disable-MDTMonitorService Enable-MDTMonitorService Get-MDTDeploymentShareStatistics Get-MDTMonitorData Get-MDTOperatingSystemCatalog Get-MDTPersistentDrive Import-MDTApplication Import-MDTDriver Import-MDTOperatingSystem Import-MDTPackage Import-MDTTaskSequence New-MDTDatabase Remove-MDTMonitorData Remove-MDTPersistentDrive Restore-MDTPersistentDrive Set-MDTMonitorData Test-MDTDeploymentShare Test-MDTMonitorData Update-MDTDatabaseSchema Update-MDTDeploymentShare Update-MDTLinkedDS Update-MDTMedia Update-MDTMedia Add-VamtProductKey Export-VamtData Find-VamtManagedMachine Get-VamtConfirmationId Get-VamtProduct Get-VamtProductKey Import-VamtData Initialize-VamtData Install-VamtConfirmationId Install-VamtProductActivation Install-VamtProductKey Update-VamtProduct',
       nomarkup: '-ne -eq -lt -gt -ge -le -not -like -notlike -match -notmatch -contains -notcontains -in -notin -replace'
     },
     contains: [
@@ -11558,7 +11314,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],120:[function(require,module,exports){
+},{}],122:[function(require,module,exports){
 module.exports = function(hljs) {
   return {
     keywords: {
@@ -11606,7 +11362,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],121:[function(require,module,exports){
+},{}],123:[function(require,module,exports){
 module.exports = function(hljs) {
   return {
     contains: [
@@ -11636,7 +11392,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],122:[function(require,module,exports){
+},{}],124:[function(require,module,exports){
 module.exports = function(hljs) {
 
   var ATOM = {
@@ -11724,7 +11480,7 @@ module.exports = function(hljs) {
     ])
   };
 };
-},{}],123:[function(require,module,exports){
+},{}],125:[function(require,module,exports){
 module.exports = function(hljs) {
   return {
     keywords: {
@@ -11760,7 +11516,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],124:[function(require,module,exports){
+},{}],126:[function(require,module,exports){
 module.exports = function(hljs) {
 
   var PUPPET_KEYWORDS = {
@@ -11875,7 +11631,7 @@ module.exports = function(hljs) {
     ]
   }
 };
-},{}],125:[function(require,module,exports){
+},{}],127:[function(require,module,exports){
 module.exports = // Base deafult colors in PB IDE: background: #FFFFDF; foreground: #000000;
 
 function(hljs) {
@@ -11933,7 +11689,7 @@ function(hljs) {
     ]
   };
 };
-},{}],126:[function(require,module,exports){
+},{}],128:[function(require,module,exports){
 module.exports = function(hljs) {
   var PROMPT = {
     className: 'meta',  begin: /^(>>>|\.\.\.) /
@@ -11993,7 +11749,7 @@ module.exports = function(hljs) {
       built_in:
         'Ellipsis NotImplemented'
     },
-    illegal: /(<\/|->|\?)/,
+    illegal: /(<\/|->|\?)|=>/,
     contains: [
       PROMPT,
       NUMBER,
@@ -12001,7 +11757,7 @@ module.exports = function(hljs) {
       hljs.HASH_COMMENT_MODE,
       {
         variants: [
-          {className: 'function', beginKeywords: 'def', relevance: 10},
+          {className: 'function', beginKeywords: 'def'},
           {className: 'class', beginKeywords: 'class'}
         ],
         end: /:/,
@@ -12025,7 +11781,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],127:[function(require,module,exports){
+},{}],129:[function(require,module,exports){
 module.exports = function(hljs) {
   var Q_KEYWORDS = {
   keyword:
@@ -12048,7 +11804,7 @@ module.exports = function(hljs) {
      ]
   };
 };
-},{}],128:[function(require,module,exports){
+},{}],130:[function(require,module,exports){
 module.exports = function(hljs) {
   var KEYWORDS = {
       keyword:
@@ -12217,7 +11973,7 @@ module.exports = function(hljs) {
     illegal: /#/
   };
 };
-},{}],129:[function(require,module,exports){
+},{}],131:[function(require,module,exports){
 module.exports = function(hljs) {
   var IDENT_RE = '([a-zA-Z]|\\.[a-zA-Z.])[a-zA-Z0-9._]*';
 
@@ -12287,7 +12043,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],130:[function(require,module,exports){
+},{}],132:[function(require,module,exports){
 module.exports = function(hljs) {
   return {
     keywords:
@@ -12314,7 +12070,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],131:[function(require,module,exports){
+},{}],133:[function(require,module,exports){
 module.exports = function(hljs) {
   var IDENTIFIER = '[a-zA-Z-_][^\\n{]+\\{';
 
@@ -12381,7 +12137,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],132:[function(require,module,exports){
+},{}],134:[function(require,module,exports){
 module.exports = function(hljs) {
   return {
     keywords: {
@@ -12417,7 +12173,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],133:[function(require,module,exports){
+},{}],135:[function(require,module,exports){
 module.exports = function(hljs) {
   var RUBY_METHOD_RE = '[a-zA-Z_]\\w*[!?=]?|[-+~]\\@|<<|>>|=~|===?|<=>|[<>]=?|\\*\\*|[-/+%^&*~`|]|\\[\\]=?';
   var RUBY_KEYWORDS = {
@@ -12543,7 +12299,7 @@ module.exports = function(hljs) {
       keywords: RUBY_KEYWORDS
     },
     { // regexp container
-      begin: '(' + hljs.RE_STARTERS_RE + ')\\s*',
+      begin: '(' + hljs.RE_STARTERS_RE + '|unless)\\s*',
       contains: [
         IRB_OBJECT,
         {
@@ -12593,7 +12349,7 @@ module.exports = function(hljs) {
     contains: COMMENT_MODES.concat(IRB_DEFAULT).concat(RUBY_DEFAULT_CONTAINS)
   };
 };
-},{}],134:[function(require,module,exports){
+},{}],136:[function(require,module,exports){
 module.exports = function(hljs) {
   return {
     keywords: {
@@ -12654,7 +12410,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],135:[function(require,module,exports){
+},{}],137:[function(require,module,exports){
 module.exports = function(hljs) {
   var NUM_SUFFIX = '([uif](8|16|32|64|size))\?';
   var KEYWORDS =
@@ -12758,7 +12514,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],136:[function(require,module,exports){
+},{}],138:[function(require,module,exports){
 module.exports = function(hljs) {
 
   var ANNOTATION = { className: 'meta', begin: '@[A-Za-z]+' };
@@ -12873,7 +12629,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],137:[function(require,module,exports){
+},{}],139:[function(require,module,exports){
 module.exports = function(hljs) {
   var SCHEME_IDENT_RE = '[^\\(\\)\\[\\]\\{\\}",\'`;#|\\\\\\s]+';
   var SCHEME_SIMPLE_NUMBER_RE = '(\\-|\\+)?\\d+([./]\\d+)?';
@@ -13014,7 +12770,7 @@ module.exports = function(hljs) {
     contains: [SHEBANG, NUMBER, STRING, QUOTED_IDENT, QUOTED_LIST, LIST].concat(COMMENT_MODES)
   };
 };
-},{}],138:[function(require,module,exports){
+},{}],140:[function(require,module,exports){
 module.exports = function(hljs) {
 
   var COMMON_CONTAINS = [
@@ -13068,7 +12824,7 @@ module.exports = function(hljs) {
     ].concat(COMMON_CONTAINS)
   };
 };
-},{}],139:[function(require,module,exports){
+},{}],141:[function(require,module,exports){
 module.exports = function(hljs) {
   var IDENT_RE = '[a-zA-Z-][a-zA-Z0-9_-]*';
   var VARIABLE = {
@@ -13166,7 +12922,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],140:[function(require,module,exports){
+},{}],142:[function(require,module,exports){
 module.exports = function(hljs) {
   var smali_instr_low_prio = ['add', 'and', 'cmp', 'cmpg', 'cmpl', 'const', 'div', 'double', 'float', 'goto', 'if', 'int', 'long', 'move', 'mul', 'neg', 'new', 'nop', 'not', 'or', 'rem', 'return', 'shl', 'shr', 'sput', 'sub', 'throw', 'ushr', 'xor'];
   var smali_instr_high_prio = ['aget', 'aput', 'array', 'check', 'execute', 'fill', 'filled', 'goto/16', 'goto/32', 'iget', 'instance', 'invoke', 'iput', 'monitor', 'packed', 'sget', 'sparse'];
@@ -13222,7 +12978,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],141:[function(require,module,exports){
+},{}],143:[function(require,module,exports){
 module.exports = function(hljs) {
   var VAR_IDENT_RE = '[a-z][a-zA-Z0-9_]*';
   var CHAR = {
@@ -13272,7 +13028,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],142:[function(require,module,exports){
+},{}],144:[function(require,module,exports){
 module.exports = function(hljs) {
   return {
     aliases: ['ml'],
@@ -13338,9 +13094,22 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],143:[function(require,module,exports){
+},{}],145:[function(require,module,exports){
 module.exports = function(hljs) {
   var CPP = hljs.getLanguage('cpp').exports;
+
+  // In SQF, a variable start with _
+  var VARIABLE = {
+    className: 'variable',
+    begin: /\b_+[a-zA-Z_]\w*/
+  };
+
+  // In SQF, a function should fit myTag_fnc_myFunction pattern
+  // https://community.bistudio.com/wiki/Functions_Library_(Arma_3)#Adding_a_Function
+  var FUNCTION = {
+    className: 'title',
+    begin: /[a-zA-Z][a-zA-Z0-9]+_fnc_\w*/
+  };
 
   // In SQF strings, quotes matching the start are escaped by adding a consecutive.
   // Example of single escaped quotes: " "" " and  ' '' '.
@@ -13366,426 +13135,321 @@ module.exports = function(hljs) {
     keywords: {
       keyword:
         'case catch default do else exit exitWith for forEach from if ' +
-        'switch then throw to try while with',
+        'switch then throw to try waitUntil while with',
       built_in:
-        'or plus abs accTime acos action actionKeys actionKeysImages ' +
-        'actionKeysNames actionKeysNamesArray actionName activateAddons ' +
-        'activatedAddons activateKey addAction addBackpack addBackpackCargo ' +
-        'addBackpackCargoGlobal addBackpackGlobal addCamShake ' +
-        'addCuratorAddons addCuratorCameraArea addCuratorEditableObjects ' +
-        'addCuratorEditingArea addCuratorPoints addEditorObject ' +
-        'addEventHandler addGoggles addGroupIcon addHandgunItem addHeadgear ' +
-        'addItem addItemCargo addItemCargoGlobal addItemPool ' +
-        'addItemToBackpack addItemToUniform addItemToVest addLiveStats ' +
-        'addMagazine addMagazine array addMagazineAmmoCargo ' +
-        'addMagazineCargo addMagazineCargoGlobal addMagazineGlobal ' +
-        'addMagazinePool addMagazines addMagazineTurret addMenu addMenuItem ' +
-        'addMissionEventHandler addMPEventHandler addMusicEventHandler ' +
-        'addPrimaryWeaponItem addPublicVariableEventHandler addRating ' +
-        'addResources addScore addScoreSide addSecondaryWeaponItem ' +
-        'addSwitchableUnit addTeamMember addToRemainsCollector addUniform ' +
-        'addVehicle addVest addWaypoint addWeapon addWeaponCargo ' +
-        'addWeaponCargoGlobal addWeaponGlobal addWeaponPool addWeaponTurret ' +
-        'agent agents AGLToASL aimedAtTarget aimPos airDensityRTD ' +
-        'airportSide AISFinishHeal alive allControls allCurators allDead ' +
-        'allDeadMen allDisplays allGroups allMapMarkers allMines ' +
-        'allMissionObjects allow3DMode allowCrewInImmobile ' +
-        'allowCuratorLogicIgnoreAreas allowDamage allowDammage ' +
-        'allowFileOperations allowFleeing allowGetIn allPlayers allSites ' +
-        'allTurrets allUnits allUnitsUAV allVariables ammo and animate ' +
-        'animateDoor animationPhase animationState append armoryPoints ' +
-        'arrayIntersect asin ASLToAGL ASLToATL assert assignAsCargo ' +
-        'assignAsCargoIndex assignAsCommander assignAsDriver assignAsGunner ' +
-        'assignAsTurret assignCurator assignedCargo assignedCommander ' +
-        'assignedDriver assignedGunner assignedItems assignedTarget ' +
-        'assignedTeam assignedVehicle assignedVehicleRole assignItem ' +
-        'assignTeam assignToAirport atan atan2 atg ATLToASL attachedObject ' +
-        'attachedObjects attachedTo attachObject attachTo attackEnabled ' +
-        'backpack backpackCargo backpackContainer backpackItems ' +
-        'backpackMagazines backpackSpaceFor behaviour benchmark binocular ' +
-        'blufor boundingBox boundingBoxReal boundingCenter breakOut breakTo ' +
-        'briefingName buildingExit buildingPos buttonAction buttonSetAction ' +
-        'cadetMode call callExtension camCommand camCommit ' +
-        'camCommitPrepared camCommitted camConstuctionSetParams camCreate ' +
-        'camDestroy cameraEffect cameraEffectEnableHUD cameraInterest ' +
-        'cameraOn cameraView campaignConfigFile camPreload camPreloaded ' +
-        'camPrepareBank camPrepareDir camPrepareDive camPrepareFocus ' +
-        'camPrepareFov camPrepareFovRange camPreparePos camPrepareRelPos ' +
-        'camPrepareTarget camSetBank camSetDir camSetDive camSetFocus ' +
-        'camSetFov camSetFovRange camSetPos camSetRelPos camSetTarget ' +
-        'camTarget camUseNVG canAdd canAddItemToBackpack ' +
-        'canAddItemToUniform canAddItemToVest cancelSimpleTaskDestination ' +
-        'canFire canMove canSlingLoad canStand canUnloadInCombat captive ' +
-        'captiveNum cbChecked cbSetChecked ceil cheatsEnabled ' +
-        'checkAIFeature civilian className clearAllItemsFromBackpack ' +
-        'clearBackpackCargo clearBackpackCargoGlobal clearGroupIcons ' +
-        'clearItemCargo clearItemCargoGlobal clearItemPool ' +
-        'clearMagazineCargo clearMagazineCargoGlobal clearMagazinePool ' +
-        'clearOverlay clearRadio clearWeaponCargo clearWeaponCargoGlobal ' +
-        'clearWeaponPool closeDialog closeDisplay closeOverlay ' +
-        'collapseObjectTree combatMode commandArtilleryFire commandChat ' +
-        'commander commandFire commandFollow commandFSM commandGetOut ' +
-        'commandingMenu commandMove commandRadio commandStop commandTarget ' +
-        'commandWatch comment commitOverlay compile compileFinal ' +
-        'completedFSM composeText configClasses configFile configHierarchy ' +
-        'configName configProperties configSourceMod configSourceModList ' +
-        'connectTerminalToUAV controlNull controlsGroupCtrl ' +
-        'copyFromClipboard copyToClipboard copyWaypoints cos count ' +
-        'countEnemy countFriendly countSide countType countUnknown ' +
-        'createAgent createCenter createDialog createDiaryLink ' +
-        'createDiaryRecord createDiarySubject createDisplay ' +
-        'createGearDialog createGroup createGuardedPoint createLocation ' +
-        'createMarker createMarkerLocal createMenu createMine ' +
-        'createMissionDisplay createSimpleTask createSite createSoundSource ' +
-        'createTask createTeam createTrigger createUnit createUnit array ' +
-        'createVehicle createVehicle array createVehicleCrew ' +
-        'createVehicleLocal crew ctrlActivate ctrlAddEventHandler ' +
-        'ctrlAutoScrollDelay ctrlAutoScrollRewind ctrlAutoScrollSpeed ' +
-        'ctrlChecked ctrlClassName ctrlCommit ctrlCommitted ctrlCreate ' +
-        'ctrlDelete ctrlEnable ctrlEnabled ctrlFade ctrlHTMLLoaded ctrlIDC ' +
-        'ctrlIDD ctrlMapAnimAdd ctrlMapAnimClear ctrlMapAnimCommit ' +
-        'ctrlMapAnimDone ctrlMapCursor ctrlMapMouseOver ctrlMapScale ' +
-        'ctrlMapScreenToWorld ctrlMapWorldToScreen ctrlModel ' +
-        'ctrlModelDirAndUp ctrlModelScale ctrlParent ctrlPosition ' +
-        'ctrlRemoveAllEventHandlers ctrlRemoveEventHandler ctrlScale ' +
-        'ctrlSetActiveColor ctrlSetAutoScrollDelay ctrlSetAutoScrollRewind ' +
-        'ctrlSetAutoScrollSpeed ctrlSetBackgroundColor ctrlSetChecked ' +
-        'ctrlSetEventHandler ctrlSetFade ctrlSetFocus ctrlSetFont ' +
-        'ctrlSetFontH1 ctrlSetFontH1B ctrlSetFontH2 ctrlSetFontH2B ' +
-        'ctrlSetFontH3 ctrlSetFontH3B ctrlSetFontH4 ctrlSetFontH4B ' +
-        'ctrlSetFontH5 ctrlSetFontH5B ctrlSetFontH6 ctrlSetFontH6B ' +
-        'ctrlSetFontHeight ctrlSetFontHeightH1 ctrlSetFontHeightH2 ' +
-        'ctrlSetFontHeightH3 ctrlSetFontHeightH4 ctrlSetFontHeightH5 ' +
-        'ctrlSetFontHeightH6 ctrlSetFontP ctrlSetFontPB ' +
-        'ctrlSetForegroundColor ctrlSetModel ctrlSetModelDirAndUp ' +
-        'ctrlSetModelScale ctrlSetPosition ctrlSetScale ' +
-        'ctrlSetStructuredText ctrlSetText ctrlSetTextColor ctrlSetTooltip ' +
-        'ctrlSetTooltipColorBox ctrlSetTooltipColorShade ' +
-        'ctrlSetTooltipColorText ctrlShow ctrlShown ctrlText ctrlTextHeight ' +
-        'ctrlType ctrlVisible curatorAddons curatorCamera curatorCameraArea ' +
-        'curatorCameraAreaCeiling curatorCoef curatorEditableObjects ' +
-        'curatorEditingArea curatorEditingAreaType curatorMouseOver ' +
-        'curatorPoints curatorRegisteredObjects curatorSelected ' +
-        'curatorWaypointCost currentChannel currentCommand currentMagazine ' +
-        'currentMagazineDetail currentMagazineDetailTurret ' +
-        'currentMagazineTurret currentMuzzle currentNamespace currentTask ' +
-        'currentTasks currentThrowable currentVisionMode currentWaypoint ' +
-        'currentWeapon currentWeaponMode currentWeaponTurret currentZeroing ' +
-        'cursorTarget customChat customRadio cutFadeOut cutObj cutRsc ' +
-        'cutText damage date dateToNumber daytime deActivateKey ' +
-        'debriefingText debugFSM debugLog deg deleteAt deleteCenter ' +
-        'deleteCollection deleteEditorObject deleteGroup deleteIdentity ' +
-        'deleteLocation deleteMarker deleteMarkerLocal deleteRange ' +
-        'deleteResources deleteSite deleteStatus deleteTeam deleteVehicle ' +
-        'deleteVehicleCrew deleteWaypoint detach detectedMines ' +
-        'diag activeMissionFSMs diag activeSQFScripts diag activeSQSScripts ' +
-        'diag captureFrame diag captureSlowFrame diag fps diag fpsMin ' +
-        'diag frameNo diag log diag logSlowFrame diag tickTime dialog ' +
-        'diarySubjectExists didJIP didJIPOwner difficulty difficultyEnabled ' +
-        'difficultyEnabledRTD direction directSay disableAI ' +
-        'disableCollisionWith disableConversation disableDebriefingStats ' +
-        'disableSerialization disableTIEquipment disableUAVConnectability ' +
-        'disableUserInput displayAddEventHandler displayCtrl displayNull ' +
-        'displayRemoveAllEventHandlers displayRemoveEventHandler ' +
-        'displaySetEventHandler dissolveTeam distance distance2D ' +
-        'distanceSqr distributionRegion doArtilleryFire doFire doFollow ' +
-        'doFSM doGetOut doMove doorPhase doStop doTarget doWatch drawArrow ' +
-        'drawEllipse drawIcon drawIcon3D drawLine drawLine3D drawLink ' +
-        'drawLocation drawRectangle driver drop east echo editObject ' +
-        'editorSetEventHandler effectiveCommander emptyPositions enableAI ' +
-        'enableAIFeature enableAttack enableCamShake enableCaustics ' +
-        'enableCollisionWith enableCopilot enableDebriefingStats ' +
-        'enableDiagLegend enableEndDialog enableEngineArtillery ' +
-        'enableEnvironment enableFatigue enableGunLights enableIRLasers ' +
-        'enableMimics enablePersonTurret enableRadio enableReload ' +
-        'enableRopeAttach enableSatNormalOnDetail enableSaving ' +
-        'enableSentences enableSimulation enableSimulationGlobal ' +
-        'enableTeamSwitch enableUAVConnectability enableUAVWaypoints ' +
-        'endLoadingScreen endMission engineOn enginesIsOnRTD enginesRpmRTD ' +
-        'enginesTorqueRTD entities estimatedEndServerTime estimatedTimeLeft ' +
-        'evalObjectArgument everyBackpack everyContainer exec ' +
-        'execEditorScript execFSM execVM exp expectedDestination ' +
-        'eyeDirection eyePos face faction fadeMusic fadeRadio fadeSound ' +
-        'fadeSpeech failMission fillWeaponsFromPool find findCover ' +
-        'findDisplay findEditorObject findEmptyPosition ' +
-        'findEmptyPositionReady findNearestEnemy finishMissionInit finite ' +
-        'fire fireAtTarget firstBackpack flag flagOwner fleeing floor ' +
-        'flyInHeight fog fogForecast fogParams forceAddUniform forceEnd ' +
-        'forceMap forceRespawn forceSpeed forceWalk forceWeaponFire ' +
-        'forceWeatherChange forEachMember forEachMemberAgent ' +
-        'forEachMemberTeam format formation formationDirection ' +
-        'formationLeader formationMembers formationPosition formationTask ' +
-        'formatText formLeader freeLook fromEditor fuel fullCrew ' +
-        'gearSlotAmmoCount gearSlotData getAllHitPointsDamage getAmmoCargo ' +
-        'getArray getArtilleryAmmo getArtilleryComputerSettings ' +
-        'getArtilleryETA getAssignedCuratorLogic getAssignedCuratorUnit ' +
-        'getBackpackCargo getBleedingRemaining getBurningValue ' +
-        'getCargoIndex getCenterOfMass getClientState getConnectedUAV ' +
-        'getDammage getDescription getDir getDirVisual getDLCs ' +
-        'getEditorCamera getEditorMode getEditorObjectScope ' +
-        'getElevationOffset getFatigue getFriend getFSMVariable ' +
-        'getFuelCargo getGroupIcon getGroupIconParams getGroupIcons ' +
-        'getHideFrom getHit getHitIndex getHitPointDamage getItemCargo ' +
-        'getMagazineCargo getMarkerColor getMarkerPos getMarkerSize ' +
-        'getMarkerType getMass getModelInfo getNumber getObjectArgument ' +
-        'getObjectChildren getObjectDLC getObjectMaterials getObjectProxy ' +
-        'getObjectTextures getObjectType getObjectViewDistance ' +
-        'getOxygenRemaining getPersonUsedDLCs getPlayerChannel getPlayerUID ' +
-        'getPos getPosASL getPosASLVisual getPosASLW getPosATL ' +
-        'getPosATLVisual getPosVisual getPosWorld getRepairCargo ' +
-        'getResolution getShadowDistance getSlingLoad getSpeed ' +
-        'getSuppression getTerrainHeightASL getText getVariable ' +
-        'getWeaponCargo getWPPos glanceAt globalChat globalRadio goggles ' +
-        'goto group groupChat groupFromNetId groupIconSelectable ' +
-        'groupIconsVisible groupId groupOwner groupRadio groupSelectedUnits ' +
-        'groupSelectUnit grpNull gunner gusts halt handgunItems ' +
-        'handgunMagazine handgunWeapon handsHit hasInterface hasWeapon ' +
-        'hcAllGroups hcGroupParams hcLeader hcRemoveAllGroups hcRemoveGroup ' +
-        'hcSelected hcSelectGroup hcSetGroup hcShowBar hcShownBar headgear ' +
-        'hideBody hideObject hideObjectGlobal hint hintC hintCadet ' +
-        'hintSilent hmd hostMission htmlLoad HUDMovementLevels humidity ' +
-        'image importAllGroups importance in incapacitatedState independent ' +
-        'inflame inflamed inGameUISetEventHandler inheritsFrom ' +
-        'initAmbientLife inputAction inRangeOfArtillery insertEditorObject ' +
-        'intersect isAbleToBreathe isAgent isArray isAutoHoverOn ' +
-        'isAutonomous isAutotest isBleeding isBurning isClass ' +
-        'isCollisionLightOn isCopilotEnabled isDedicated isDLCAvailable ' +
-        'isEngineOn isEqualTo isFlashlightOn isFlatEmpty isForcedWalk ' +
-        'isFormationLeader isHidden isInRemainsCollector ' +
-        'isInstructorFigureEnabled isIRLaserOn isKeyActive isKindOf ' +
-        'isLightOn isLocalized isManualFire isMarkedForCollection ' +
-        'isMultiplayer isNil isNull isNumber isObjectHidden isObjectRTD ' +
-        'isOnRoad isPipEnabled isPlayer isRealTime isServer ' +
-        'isShowing3DIcons isSteamMission isStreamFriendlyUIEnabled isText ' +
-        'isTouchingGround isTurnedOut isTutHintsEnabled isUAVConnectable ' +
-        'isUAVConnected isUniformAllowed isWalking isWeaponDeployed ' +
-        'isWeaponRested itemCargo items itemsWithMagazines join joinAs ' +
-        'joinAsSilent joinSilent joinString kbAddDatabase ' +
-        'kbAddDatabaseTargets kbAddTopic kbHasTopic kbReact kbRemoveTopic ' +
-        'kbTell kbWasSaid keyImage keyName knowsAbout land landAt ' +
-        'landResult language laserTarget lbAdd lbClear lbColor lbCurSel ' +
-        'lbData lbDelete lbIsSelected lbPicture lbSelection lbSetColor ' +
-        'lbSetCurSel lbSetData lbSetPicture lbSetPictureColor ' +
-        'lbSetPictureColorDisabled lbSetPictureColorSelected ' +
-        'lbSetSelectColor lbSetSelectColorRight lbSetSelected lbSetTooltip ' +
-        'lbSetValue lbSize lbSort lbSortByValue lbText lbValue leader ' +
-        'leaderboardDeInit leaderboardGetRows leaderboardInit leaveVehicle ' +
-        'libraryCredits libraryDisclaimers lifeState lightAttachObject ' +
-        'lightDetachObject lightIsOn lightnings limitSpeed linearConversion ' +
-        'lineBreak lineIntersects lineIntersectsObjs lineIntersectsSurfaces ' +
-        'lineIntersectsWith linkItem list listObjects ln lnbAddArray ' +
-        'lnbAddColumn lnbAddRow lnbClear lnbColor lnbCurSelRow lnbData ' +
-        'lnbDeleteColumn lnbDeleteRow lnbGetColumnsPosition lnbPicture ' +
-        'lnbSetColor lnbSetColumnsPos lnbSetCurSelRow lnbSetData ' +
-        'lnbSetPicture lnbSetText lnbSetValue lnbSize lnbText lnbValue load ' +
-        'loadAbs loadBackpack loadFile loadGame loadIdentity loadMagazine ' +
-        'loadOverlay loadStatus loadUniform loadVest local localize ' +
-        'locationNull locationPosition lock lockCameraTo lockCargo ' +
-        'lockDriver locked lockedCargo lockedDriver lockedTurret lockTurret ' +
-        'lockWP log logEntities lookAt lookAtPos magazineCargo magazines ' +
-        'magazinesAllTurrets magazinesAmmo magazinesAmmoCargo ' +
-        'magazinesAmmoFull magazinesDetail magazinesDetailBackpack ' +
-        'magazinesDetailUniform magazinesDetailVest magazinesTurret ' +
-        'magazineTurretAmmo mapAnimAdd mapAnimClear mapAnimCommit ' +
-        'mapAnimDone mapCenterOnCamera mapGridPosition ' +
-        'markAsFinishedOnSteam markerAlpha markerBrush markerColor ' +
-        'markerDir markerPos markerShape markerSize markerText markerType ' +
-        'max members min mineActive mineDetectedBy missionConfigFile ' +
-        'missionName missionNamespace missionStart mod modelToWorld ' +
-        'modelToWorldVisual moonIntensity morale move moveInAny moveInCargo ' +
-        'moveInCommander moveInDriver moveInGunner moveInTurret ' +
-        'moveObjectToEnd moveOut moveTime moveTo moveToCompleted ' +
-        'moveToFailed musicVolume name name location nameSound nearEntities ' +
-        'nearestBuilding nearestLocation nearestLocations ' +
-        'nearestLocationWithDubbing nearestObject nearestObjects ' +
-        'nearObjects nearObjectsReady nearRoads nearSupplies nearTargets ' +
-        'needReload netId netObjNull newOverlay nextMenuItemIndex ' +
-        'nextWeatherChange nMenuItems not numberToDate objectCurators ' +
-        'objectFromNetId objectParent objNull objStatus onBriefingGroup ' +
-        'onBriefingNotes onBriefingPlan onBriefingTeamSwitch ' +
-        'onCommandModeChanged onDoubleClick onEachFrame onGroupIconClick ' +
-        'onGroupIconOverEnter onGroupIconOverLeave ' +
-        'onHCGroupSelectionChanged onMapSingleClick onPlayerConnected ' +
-        'onPlayerDisconnected onPreloadFinished onPreloadStarted ' +
-        'onShowNewObject onTeamSwitch openCuratorInterface openMap ' +
-        'openYoutubeVideo opfor or orderGetIn overcast overcastForecast ' +
-        'owner param params parseNumber parseText parsingNamespace ' +
-        'particlesQuality pi pickWeaponPool pitch playableSlotsNumber ' +
-        'playableUnits playAction playActionNow player playerRespawnTime ' +
-        'playerSide playersNumber playGesture playMission playMove ' +
-        'playMoveNow playMusic playScriptedMission playSound playSound3D ' +
-        'position positionCameraToWorld posScreenToWorld posWorldToScreen ' +
-        'ppEffectAdjust ppEffectCommit ppEffectCommitted ppEffectCreate ' +
-        'ppEffectDestroy ppEffectEnable ppEffectForceInNVG precision ' +
-        'preloadCamera preloadObject preloadSound preloadTitleObj ' +
-        'preloadTitleRsc preprocessFile preprocessFileLineNumbers ' +
-        'primaryWeapon primaryWeaponItems primaryWeaponMagazine priority ' +
-        'private processDiaryLink productVersion profileName ' +
-        'profileNamespace profileNameSteam progressLoadingScreen ' +
-        'progressPosition progressSetPosition publicVariable ' +
-        'publicVariableClient publicVariableServer pushBack putWeaponPool ' +
-        'queryItemsPool queryMagazinePool queryWeaponPool rad ' +
-        'radioChannelAdd radioChannelCreate radioChannelRemove ' +
-        'radioChannelSetCallSign radioChannelSetLabel radioVolume rain ' +
-        'rainbow random rank rankId rating rectangular registeredTasks ' +
-        'registerTask reload reloadEnabled remoteControl remoteExec ' +
-        'remoteExecCall removeAction removeAllActions ' +
-        'removeAllAssignedItems removeAllContainers removeAllCuratorAddons ' +
-        'removeAllCuratorCameraAreas removeAllCuratorEditingAreas ' +
-        'removeAllEventHandlers removeAllHandgunItems removeAllItems ' +
-        'removeAllItemsWithMagazines removeAllMissionEventHandlers ' +
-        'removeAllMPEventHandlers removeAllMusicEventHandlers ' +
-        'removeAllPrimaryWeaponItems removeAllWeapons removeBackpack ' +
-        'removeBackpackGlobal removeCuratorAddons removeCuratorCameraArea ' +
-        'removeCuratorEditableObjects removeCuratorEditingArea ' +
-        'removeDrawIcon removeDrawLinks removeEventHandler ' +
-        'removeFromRemainsCollector removeGoggles removeGroupIcon ' +
-        'removeHandgunItem removeHeadgear removeItem removeItemFromBackpack ' +
-        'removeItemFromUniform removeItemFromVest removeItems ' +
-        'removeMagazine removeMagazineGlobal removeMagazines ' +
-        'removeMagazinesTurret removeMagazineTurret removeMenuItem ' +
-        'removeMissionEventHandler removeMPEventHandler ' +
-        'removeMusicEventHandler removePrimaryWeaponItem ' +
-        'removeSecondaryWeaponItem removeSimpleTask removeSwitchableUnit ' +
-        'removeTeamMember removeUniform removeVest removeWeapon ' +
-        'removeWeaponGlobal removeWeaponTurret requiredVersion ' +
-        'resetCamShake resetSubgroupDirection resistance resize resources ' +
-        'respawnVehicle restartEditorCamera reveal revealMine reverse ' +
-        'reversedMouseY roadsConnectedTo roleDescription ' +
-        'ropeAttachedObjects ropeAttachedTo ropeAttachEnabled ropeAttachTo ' +
-        'ropeCreate ropeCut ropeEndPosition ropeLength ropes ropeUnwind ' +
-        'ropeUnwound rotorsForcesRTD rotorsRpmRTD round runInitScript ' +
-        'safeZoneH safeZoneW safeZoneWAbs safeZoneX safeZoneXAbs safeZoneY ' +
-        'saveGame saveIdentity saveJoysticks saveOverlay ' +
-        'saveProfileNamespace saveStatus saveVar savingEnabled say say2D ' +
-        'say3D scopeName score scoreSide screenToWorld scriptDone ' +
-        'scriptName scriptNull scudState secondaryWeapon ' +
-        'secondaryWeaponItems secondaryWeaponMagazine select ' +
-        'selectBestPlaces selectDiarySubject selectedEditorObjects ' +
-        'selectEditorObject selectionPosition selectLeader selectNoPlayer ' +
-        'selectPlayer selectWeapon selectWeaponTurret sendAUMessage ' +
-        'sendSimpleCommand sendTask sendTaskResult sendUDPMessage ' +
-        'serverCommand serverCommandAvailable serverCommandExecutable ' +
-        'serverName serverTime set setAccTime setAirportSide setAmmo ' +
-        'setAmmoCargo setAperture setApertureNew setArmoryPoints ' +
-        'setAttributes setAutonomous setBehaviour setBleedingRemaining ' +
-        'setCameraInterest setCamShakeDefParams setCamShakeParams ' +
-        'setCamUseTi setCaptive setCenterOfMass setCollisionLight ' +
-        'setCombatMode setCompassOscillation setCuratorCameraAreaCeiling ' +
-        'setCuratorCoef setCuratorEditingAreaType setCuratorWaypointCost ' +
-        'setCurrentChannel setCurrentTask setCurrentWaypoint setDamage ' +
-        'setDammage setDate setDebriefingText setDefaultCamera ' +
-        'setDestination setDetailMapBlendPars setDir setDirection ' +
-        'setDrawIcon setDropInterval setEditorMode setEditorObjectScope ' +
-        'setEffectCondition setFace setFaceAnimation setFatigue ' +
-        'setFlagOwner setFlagSide setFlagTexture setFog setFog array ' +
-        'setFormation setFormationTask setFormDir setFriend setFromEditor ' +
-        'setFSMVariable setFuel setFuelCargo setGroupIcon ' +
-        'setGroupIconParams setGroupIconsSelectable setGroupIconsVisible ' +
-        'setGroupId setGroupIdGlobal setGroupOwner setGusts setHideBehind ' +
-        'setHit setHitIndex setHitPointDamage setHorizonParallaxCoef ' +
-        'setHUDMovementLevels setIdentity setImportance setLeader ' +
-        'setLightAmbient setLightAttenuation setLightBrightness ' +
-        'setLightColor setLightDayLight setLightFlareMaxDistance ' +
-        'setLightFlareSize setLightIntensity setLightnings setLightUseFlare ' +
-        'setLocalWindParams setMagazineTurretAmmo setMarkerAlpha ' +
-        'setMarkerAlphaLocal setMarkerBrush setMarkerBrushLocal ' +
-        'setMarkerColor setMarkerColorLocal setMarkerDir setMarkerDirLocal ' +
-        'setMarkerPos setMarkerPosLocal setMarkerShape setMarkerShapeLocal ' +
-        'setMarkerSize setMarkerSizeLocal setMarkerText setMarkerTextLocal ' +
-        'setMarkerType setMarkerTypeLocal setMass setMimic setMousePosition ' +
-        'setMusicEffect setMusicEventHandler setName setNameSound ' +
-        'setObjectArguments setObjectMaterial setObjectProxy ' +
-        'setObjectTexture setObjectTextureGlobal setObjectViewDistance ' +
-        'setOvercast setOwner setOxygenRemaining setParticleCircle ' +
-        'setParticleClass setParticleFire setParticleParams ' +
-        'setParticleRandom setPilotLight setPiPEffect setPitch setPlayable ' +
-        'setPlayerRespawnTime setPos setPosASL setPosASL2 setPosASLW ' +
-        'setPosATL setPosition setPosWorld setRadioMsg setRain setRainbow ' +
-        'setRandomLip setRank setRectangular setRepairCargo ' +
-        'setShadowDistance setSide setSimpleTaskDescription ' +
-        'setSimpleTaskDestination setSimpleTaskTarget setSimulWeatherLayers ' +
-        'setSize setSkill setSkill array setSlingLoad setSoundEffect ' +
-        'setSpeaker setSpeech setSpeedMode setStatValue setSuppression ' +
-        'setSystemOfUnits setTargetAge setTaskResult setTaskState ' +
-        'setTerrainGrid setText setTimeMultiplier setTitleEffect ' +
-        'setTriggerActivation setTriggerArea setTriggerStatements ' +
-        'setTriggerText setTriggerTimeout setTriggerType setType ' +
-        'setUnconscious setUnitAbility setUnitPos setUnitPosWeak ' +
-        'setUnitRank setUnitRecoilCoefficient setUnloadInCombat ' +
-        'setUserActionText setVariable setVectorDir setVectorDirAndUp ' +
-        'setVectorUp setVehicleAmmo setVehicleAmmoDef setVehicleArmor ' +
-        'setVehicleId setVehicleLock setVehiclePosition setVehicleTiPars ' +
-        'setVehicleVarName setVelocity setVelocityTransformation ' +
-        'setViewDistance setVisibleIfTreeCollapsed setWaves ' +
-        'setWaypointBehaviour setWaypointCombatMode ' +
-        'setWaypointCompletionRadius setWaypointDescription ' +
-        'setWaypointFormation setWaypointHousePosition ' +
-        'setWaypointLoiterRadius setWaypointLoiterType setWaypointName ' +
-        'setWaypointPosition setWaypointScript setWaypointSpeed ' +
-        'setWaypointStatements setWaypointTimeout setWaypointType ' +
-        'setWaypointVisible setWeaponReloadingTime setWind setWindDir ' +
-        'setWindForce setWindStr setWPPos show3DIcons showChat ' +
-        'showCinemaBorder showCommandingMenu showCompass showCuratorCompass ' +
-        'showGPS showHUD showLegend showMap shownArtilleryComputer ' +
-        'shownChat shownCompass shownCuratorCompass showNewEditorObject ' +
-        'shownGPS shownHUD shownMap shownPad shownRadio shownUAVFeed ' +
-        'shownWarrant shownWatch showPad showRadio showSubtitles ' +
-        'showUAVFeed showWarrant showWatch showWaypoint side sideChat ' +
-        'sideEnemy sideFriendly sideLogic sideRadio sideUnknown simpleTasks ' +
-        'simulationEnabled simulCloudDensity simulCloudOcclusion ' +
-        'simulInClouds simulWeatherSync sin size sizeOf skill skillFinal ' +
-        'skipTime sleep sliderPosition sliderRange sliderSetPosition ' +
-        'sliderSetRange sliderSetSpeed sliderSpeed slingLoadAssistantShown ' +
-        'soldierMagazines someAmmo sort soundVolume spawn speaker speed ' +
-        'speedMode splitString sqrt squadParams stance startLoadingScreen ' +
-        'step stop stopped str sunOrMoon supportInfo suppressFor ' +
-        'surfaceIsWater surfaceNormal surfaceType swimInDepth ' +
-        'switchableUnits switchAction switchCamera switchGesture ' +
-        'switchLight switchMove synchronizedObjects synchronizedTriggers ' +
-        'synchronizedWaypoints synchronizeObjectsAdd ' +
-        'synchronizeObjectsRemove synchronizeTrigger synchronizeWaypoint ' +
-        'synchronizeWaypoint trigger systemChat systemOfUnits tan ' +
-        'targetKnowledge targetsAggregate targetsQuery taskChildren ' +
-        'taskCompleted taskDescription taskDestination taskHint taskNull ' +
-        'taskParent taskResult taskState teamMember teamMemberNull teamName ' +
-        'teams teamSwitch teamSwitchEnabled teamType terminate ' +
-        'terrainIntersect terrainIntersectASL text text location textLog ' +
-        'textLogFormat tg time timeMultiplier titleCut titleFadeOut ' +
-        'titleObj titleRsc titleText toArray toLower toString toUpper ' +
-        'triggerActivated triggerActivation triggerArea ' +
-        'triggerAttachedVehicle triggerAttachObject triggerAttachVehicle ' +
-        'triggerStatements triggerText triggerTimeout triggerTimeoutCurrent ' +
-        'triggerType turretLocal turretOwner turretUnit tvAdd tvClear ' +
-        'tvCollapse tvCount tvCurSel tvData tvDelete tvExpand tvPicture ' +
-        'tvSetCurSel tvSetData tvSetPicture tvSetPictureColor tvSetTooltip ' +
-        'tvSetValue tvSort tvSortByValue tvText tvValue type typeName ' +
-        'typeOf UAVControl uiNamespace uiSleep unassignCurator unassignItem ' +
-        'unassignTeam unassignVehicle underwater uniform uniformContainer ' +
-        'uniformItems uniformMagazines unitAddons unitBackpack unitPos ' +
-        'unitReady unitRecoilCoefficient units unitsBelowHeight unlinkItem ' +
-        'unlockAchievement unregisterTask updateDrawIcon updateMenuItem ' +
-        'updateObjectTree useAudioTimeForMoves vectorAdd vectorCos ' +
-        'vectorCrossProduct vectorDiff vectorDir vectorDirVisual ' +
-        'vectorDistance vectorDistanceSqr vectorDotProduct vectorFromTo ' +
-        'vectorMagnitude vectorMagnitudeSqr vectorMultiply vectorNormalized ' +
-        'vectorUp vectorUpVisual vehicle vehicleChat vehicleRadio vehicles ' +
-        'vehicleVarName velocity velocityModelSpace verifySignature vest ' +
-        'vestContainer vestItems vestMagazines viewDistance visibleCompass ' +
-        'visibleGPS visibleMap visiblePosition visiblePositionASL ' +
-        'visibleWatch waitUntil waves waypointAttachedObject ' +
-        'waypointAttachedVehicle waypointAttachObject waypointAttachVehicle ' +
-        'waypointBehaviour waypointCombatMode waypointCompletionRadius ' +
-        'waypointDescription waypointFormation waypointHousePosition ' +
-        'waypointLoiterRadius waypointLoiterType waypointName ' +
-        'waypointPosition waypoints waypointScript waypointsEnabledUAV ' +
-        'waypointShow waypointSpeed waypointStatements waypointTimeout ' +
-        'waypointTimeoutCurrent waypointType waypointVisible ' +
-        'weaponAccessories weaponCargo weaponDirection weaponLowered ' +
-        'weapons weaponsItems weaponsItemsCargo weaponState weaponsTurret ' +
-        'weightRTD west WFSideText wind windDir windStr wingsForcesRTD ' +
-        'worldName worldSize worldToModel worldToModelVisual worldToScreen ' +
-        '_forEachIndex _this _x',
+        'abs accTime acos action actionIDs actionKeys actionKeysImages actionKeysNames ' +
+        'actionKeysNamesArray actionName actionParams activateAddons activatedAddons activateKey ' +
+        'add3DENConnection add3DENEventHandler add3DENLayer addAction addBackpack addBackpackCargo ' +
+        'addBackpackCargoGlobal addBackpackGlobal addCamShake addCuratorAddons addCuratorCameraArea ' +
+        'addCuratorEditableObjects addCuratorEditingArea addCuratorPoints addEditorObject addEventHandler ' +
+        'addGoggles addGroupIcon addHandgunItem addHeadgear addItem addItemCargo addItemCargoGlobal ' +
+        'addItemPool addItemToBackpack addItemToUniform addItemToVest addLiveStats addMagazine ' +
+        'addMagazineAmmoCargo addMagazineCargo addMagazineCargoGlobal addMagazineGlobal addMagazinePool ' +
+        'addMagazines addMagazineTurret addMenu addMenuItem addMissionEventHandler addMPEventHandler ' +
+        'addMusicEventHandler addOwnedMine addPlayerScores addPrimaryWeaponItem ' +
+        'addPublicVariableEventHandler addRating addResources addScore addScoreSide addSecondaryWeaponItem ' +
+        'addSwitchableUnit addTeamMember addToRemainsCollector addUniform addVehicle addVest addWaypoint ' +
+        'addWeapon addWeaponCargo addWeaponCargoGlobal addWeaponGlobal addWeaponItem addWeaponPool ' +
+        'addWeaponTurret agent agents AGLToASL aimedAtTarget aimPos airDensityRTD airportSide ' +
+        'AISFinishHeal alive all3DENEntities allControls allCurators allCutLayers allDead allDeadMen ' +
+        'allDisplays allGroups allMapMarkers allMines allMissionObjects allow3DMode allowCrewInImmobile ' +
+        'allowCuratorLogicIgnoreAreas allowDamage allowDammage allowFileOperations allowFleeing allowGetIn ' +
+        'allowSprint allPlayers allSites allTurrets allUnits allUnitsUAV allVariables ammo and animate ' +
+        'animateDoor animateSource animationNames animationPhase animationSourcePhase animationState ' +
+        'append apply armoryPoints arrayIntersect asin ASLToAGL ASLToATL assert assignAsCargo ' +
+        'assignAsCargoIndex assignAsCommander assignAsDriver assignAsGunner assignAsTurret assignCurator ' +
+        'assignedCargo assignedCommander assignedDriver assignedGunner assignedItems assignedTarget ' +
+        'assignedTeam assignedVehicle assignedVehicleRole assignItem assignTeam assignToAirport atan atan2 ' +
+        'atg ATLToASL attachedObject attachedObjects attachedTo attachObject attachTo attackEnabled ' +
+        'backpack backpackCargo backpackContainer backpackItems backpackMagazines backpackSpaceFor ' +
+        'behaviour benchmark binocular blufor boundingBox boundingBoxReal boundingCenter breakOut breakTo ' +
+        'briefingName buildingExit buildingPos buttonAction buttonSetAction cadetMode call callExtension ' +
+        'camCommand camCommit camCommitPrepared camCommitted camConstuctionSetParams camCreate camDestroy ' +
+        'cameraEffect cameraEffectEnableHUD cameraInterest cameraOn cameraView campaignConfigFile ' +
+        'camPreload camPreloaded camPrepareBank camPrepareDir camPrepareDive camPrepareFocus camPrepareFov ' +
+        'camPrepareFovRange camPreparePos camPrepareRelPos camPrepareTarget camSetBank camSetDir ' +
+        'camSetDive camSetFocus camSetFov camSetFovRange camSetPos camSetRelPos camSetTarget camTarget ' +
+        'camUseNVG canAdd canAddItemToBackpack canAddItemToUniform canAddItemToVest ' +
+        'cancelSimpleTaskDestination canFire canMove canSlingLoad canStand canSuspend canUnloadInCombat ' +
+        'canVehicleCargo captive captiveNum cbChecked cbSetChecked ceil channelEnabled cheatsEnabled ' +
+        'checkAIFeature checkVisibility civilian className clearAllItemsFromBackpack clearBackpackCargo ' +
+        'clearBackpackCargoGlobal clearGroupIcons clearItemCargo clearItemCargoGlobal clearItemPool ' +
+        'clearMagazineCargo clearMagazineCargoGlobal clearMagazinePool clearOverlay clearRadio ' +
+        'clearWeaponCargo clearWeaponCargoGlobal clearWeaponPool clientOwner closeDialog closeDisplay ' +
+        'closeOverlay collapseObjectTree collect3DENHistory combatMode commandArtilleryFire commandChat ' +
+        'commander commandFire commandFollow commandFSM commandGetOut commandingMenu commandMove ' +
+        'commandRadio commandStop commandSuppressiveFire commandTarget commandWatch comment commitOverlay ' +
+        'compile compileFinal completedFSM composeText configClasses configFile configHierarchy configName ' +
+        'configNull configProperties configSourceAddonList configSourceMod configSourceModList ' +
+        'connectTerminalToUAV controlNull controlsGroupCtrl copyFromClipboard copyToClipboard ' +
+        'copyWaypoints cos count countEnemy countFriendly countSide countType countUnknown ' +
+        'create3DENComposition create3DENEntity createAgent createCenter createDialog createDiaryLink ' +
+        'createDiaryRecord createDiarySubject createDisplay createGearDialog createGroup ' +
+        'createGuardedPoint createLocation createMarker createMarkerLocal createMenu createMine ' +
+        'createMissionDisplay createMPCampaignDisplay createSimpleObject createSimpleTask createSite ' +
+        'createSoundSource createTask createTeam createTrigger createUnit createVehicle createVehicleCrew ' +
+        'createVehicleLocal crew ctrlActivate ctrlAddEventHandler ctrlAngle ctrlAutoScrollDelay ' +
+        'ctrlAutoScrollRewind ctrlAutoScrollSpeed ctrlChecked ctrlClassName ctrlCommit ctrlCommitted ' +
+        'ctrlCreate ctrlDelete ctrlEnable ctrlEnabled ctrlFade ctrlHTMLLoaded ctrlIDC ctrlIDD ' +
+        'ctrlMapAnimAdd ctrlMapAnimClear ctrlMapAnimCommit ctrlMapAnimDone ctrlMapCursor ctrlMapMouseOver ' +
+        'ctrlMapScale ctrlMapScreenToWorld ctrlMapWorldToScreen ctrlModel ctrlModelDirAndUp ctrlModelScale ' +
+        'ctrlParent ctrlParentControlsGroup ctrlPosition ctrlRemoveAllEventHandlers ctrlRemoveEventHandler ' +
+        'ctrlScale ctrlSetActiveColor ctrlSetAngle ctrlSetAutoScrollDelay ctrlSetAutoScrollRewind ' +
+        'ctrlSetAutoScrollSpeed ctrlSetBackgroundColor ctrlSetChecked ctrlSetEventHandler ctrlSetFade ' +
+        'ctrlSetFocus ctrlSetFont ctrlSetFontH1 ctrlSetFontH1B ctrlSetFontH2 ctrlSetFontH2B ctrlSetFontH3 ' +
+        'ctrlSetFontH3B ctrlSetFontH4 ctrlSetFontH4B ctrlSetFontH5 ctrlSetFontH5B ctrlSetFontH6 ' +
+        'ctrlSetFontH6B ctrlSetFontHeight ctrlSetFontHeightH1 ctrlSetFontHeightH2 ctrlSetFontHeightH3 ' +
+        'ctrlSetFontHeightH4 ctrlSetFontHeightH5 ctrlSetFontHeightH6 ctrlSetFontHeightSecondary ' +
+        'ctrlSetFontP ctrlSetFontPB ctrlSetFontSecondary ctrlSetForegroundColor ctrlSetModel ' +
+        'ctrlSetModelDirAndUp ctrlSetModelScale ctrlSetPosition ctrlSetScale ctrlSetStructuredText ' +
+        'ctrlSetText ctrlSetTextColor ctrlSetTooltip ctrlSetTooltipColorBox ctrlSetTooltipColorShade ' +
+        'ctrlSetTooltipColorText ctrlShow ctrlShown ctrlText ctrlTextHeight ctrlType ctrlVisible ' +
+        'curatorAddons curatorCamera curatorCameraArea curatorCameraAreaCeiling curatorCoef ' +
+        'curatorEditableObjects curatorEditingArea curatorEditingAreaType curatorMouseOver curatorPoints ' +
+        'curatorRegisteredObjects curatorSelected curatorWaypointCost current3DENOperation currentChannel ' +
+        'currentCommand currentMagazine currentMagazineDetail currentMagazineDetailTurret ' +
+        'currentMagazineTurret currentMuzzle currentNamespace currentTask currentTasks currentThrowable ' +
+        'currentVisionMode currentWaypoint currentWeapon currentWeaponMode currentWeaponTurret ' +
+        'currentZeroing cursorObject cursorTarget customChat customRadio cutFadeOut cutObj cutRsc cutText ' +
+        'damage date dateToNumber daytime deActivateKey debriefingText debugFSM debugLog deg ' +
+        'delete3DENEntities deleteAt deleteCenter deleteCollection deleteEditorObject deleteGroup ' +
+        'deleteIdentity deleteLocation deleteMarker deleteMarkerLocal deleteRange deleteResources ' +
+        'deleteSite deleteStatus deleteTeam deleteVehicle deleteVehicleCrew deleteWaypoint detach ' +
+        'detectedMines diag_activeMissionFSMs diag_activeScripts diag_activeSQFScripts ' +
+        'diag_activeSQSScripts diag_captureFrame diag_captureSlowFrame diag_codePerformance diag_drawMode ' +
+        'diag_enable diag_enabled diag_fps diag_fpsMin diag_frameNo diag_list diag_log diag_logSlowFrame ' +
+        'diag_mergeConfigFile diag_recordTurretLimits diag_tickTime diag_toggle dialog diarySubjectExists ' +
+        'didJIP didJIPOwner difficulty difficultyEnabled difficultyEnabledRTD difficultyOption direction ' +
+        'directSay disableAI disableCollisionWith disableConversation disableDebriefingStats ' +
+        'disableNVGEquipment disableRemoteSensors disableSerialization disableTIEquipment ' +
+        'disableUAVConnectability disableUserInput displayAddEventHandler displayCtrl displayNull ' +
+        'displayParent displayRemoveAllEventHandlers displayRemoveEventHandler displaySetEventHandler ' +
+        'dissolveTeam distance distance2D distanceSqr distributionRegion do3DENAction doArtilleryFire ' +
+        'doFire doFollow doFSM doGetOut doMove doorPhase doStop doSuppressiveFire doTarget doWatch ' +
+        'drawArrow drawEllipse drawIcon drawIcon3D drawLine drawLine3D drawLink drawLocation drawPolygon ' +
+        'drawRectangle driver drop east echo edit3DENMissionAttributes editObject editorSetEventHandler ' +
+        'effectiveCommander emptyPositions enableAI enableAIFeature enableAimPrecision enableAttack ' +
+        'enableAudioFeature enableCamShake enableCaustics enableChannel enableCollisionWith enableCopilot ' +
+        'enableDebriefingStats enableDiagLegend enableEndDialog enableEngineArtillery enableEnvironment ' +
+        'enableFatigue enableGunLights enableIRLasers enableMimics enablePersonTurret enableRadio ' +
+        'enableReload enableRopeAttach enableSatNormalOnDetail enableSaving enableSentences ' +
+        'enableSimulation enableSimulationGlobal enableStamina enableTeamSwitch enableUAVConnectability ' +
+        'enableUAVWaypoints enableVehicleCargo endLoadingScreen endMission engineOn enginesIsOnRTD ' +
+        'enginesRpmRTD enginesTorqueRTD entities estimatedEndServerTime estimatedTimeLeft ' +
+        'evalObjectArgument everyBackpack everyContainer exec execEditorScript execFSM execVM exp ' +
+        'expectedDestination exportJIPMessages eyeDirection eyePos face faction fadeMusic fadeRadio ' +
+        'fadeSound fadeSpeech failMission fillWeaponsFromPool find findCover findDisplay findEditorObject ' +
+        'findEmptyPosition findEmptyPositionReady findNearestEnemy finishMissionInit finite fire ' +
+        'fireAtTarget firstBackpack flag flagOwner flagSide flagTexture fleeing floor flyInHeight ' +
+        'flyInHeightASL fog fogForecast fogParams forceAddUniform forcedMap forceEnd forceMap forceRespawn ' +
+        'forceSpeed forceWalk forceWeaponFire forceWeatherChange forEachMember forEachMemberAgent ' +
+        'forEachMemberTeam format formation formationDirection formationLeader formationMembers ' +
+        'formationPosition formationTask formatText formLeader freeLook fromEditor fuel fullCrew ' +
+        'gearIDCAmmoCount gearSlotAmmoCount gearSlotData get3DENActionState get3DENAttribute get3DENCamera ' +
+        'get3DENConnections get3DENEntity get3DENEntityID get3DENGrid get3DENIconsVisible ' +
+        'get3DENLayerEntities get3DENLinesVisible get3DENMissionAttribute get3DENMouseOver get3DENSelected ' +
+        'getAimingCoef getAllHitPointsDamage getAllOwnedMines getAmmoCargo getAnimAimPrecision ' +
+        'getAnimSpeedCoef getArray getArtilleryAmmo getArtilleryComputerSettings getArtilleryETA ' +
+        'getAssignedCuratorLogic getAssignedCuratorUnit getBackpackCargo getBleedingRemaining ' +
+        'getBurningValue getCameraViewDirection getCargoIndex getCenterOfMass getClientState ' +
+        'getClientStateNumber getConnectedUAV getCustomAimingCoef getDammage getDescription getDir ' +
+        'getDirVisual getDLCs getEditorCamera getEditorMode getEditorObjectScope getElevationOffset ' +
+        'getFatigue getFriend getFSMVariable getFuelCargo getGroupIcon getGroupIconParams getGroupIcons ' +
+        'getHideFrom getHit getHitIndex getHitPointDamage getItemCargo getMagazineCargo getMarkerColor ' +
+        'getMarkerPos getMarkerSize getMarkerType getMass getMissionConfig getMissionConfigValue ' +
+        'getMissionDLCs getMissionLayerEntities getModelInfo getMousePosition getNumber getObjectArgument ' +
+        'getObjectChildren getObjectDLC getObjectMaterials getObjectProxy getObjectTextures getObjectType ' +
+        'getObjectViewDistance getOxygenRemaining getPersonUsedDLCs getPilotCameraDirection ' +
+        'getPilotCameraPosition getPilotCameraRotation getPilotCameraTarget getPlayerChannel ' +
+        'getPlayerScores getPlayerUID getPos getPosASL getPosASLVisual getPosASLW getPosATL ' +
+        'getPosATLVisual getPosVisual getPosWorld getRelDir getRelPos getRemoteSensorsDisabled ' +
+        'getRepairCargo getResolution getShadowDistance getShotParents getSlingLoad getSpeed getStamina ' +
+        'getStatValue getSuppression getTerrainHeightASL getText getUnitLoadout getUnitTrait getVariable ' +
+        'getVehicleCargo getWeaponCargo getWeaponSway getWPPos glanceAt globalChat globalRadio goggles ' +
+        'goto group groupChat groupFromNetId groupIconSelectable groupIconsVisible groupId groupOwner ' +
+        'groupRadio groupSelectedUnits groupSelectUnit grpNull gunner gusts halt handgunItems ' +
+        'handgunMagazine handgunWeapon handsHit hasInterface hasPilotCamera hasWeapon hcAllGroups ' +
+        'hcGroupParams hcLeader hcRemoveAllGroups hcRemoveGroup hcSelected hcSelectGroup hcSetGroup ' +
+        'hcShowBar hcShownBar headgear hideBody hideObject hideObjectGlobal hideSelection hint hintC ' +
+        'hintCadet hintSilent hmd hostMission htmlLoad HUDMovementLevels humidity image importAllGroups ' +
+        'importance in inArea inAreaArray incapacitatedState independent inflame inflamed ' +
+        'inGameUISetEventHandler inheritsFrom initAmbientLife inPolygon inputAction inRangeOfArtillery ' +
+        'insertEditorObject intersect is3DEN is3DENMultiplayer isAbleToBreathe isAgent isArray ' +
+        'isAutoHoverOn isAutonomous isAutotest isBleeding isBurning isClass isCollisionLightOn ' +
+        'isCopilotEnabled isDedicated isDLCAvailable isEngineOn isEqualTo isEqualType isEqualTypeAll ' +
+        'isEqualTypeAny isEqualTypeArray isEqualTypeParams isFilePatchingEnabled isFlashlightOn ' +
+        'isFlatEmpty isForcedWalk isFormationLeader isHidden isInRemainsCollector ' +
+        'isInstructorFigureEnabled isIRLaserOn isKeyActive isKindOf isLightOn isLocalized isManualFire ' +
+        'isMarkedForCollection isMultiplayer isMultiplayerSolo isNil isNull isNumber isObjectHidden ' +
+        'isObjectRTD isOnRoad isPipEnabled isPlayer isRealTime isRemoteExecuted isRemoteExecutedJIP ' +
+        'isServer isShowing3DIcons isSprintAllowed isStaminaEnabled isSteamMission ' +
+        'isStreamFriendlyUIEnabled isText isTouchingGround isTurnedOut isTutHintsEnabled isUAVConnectable ' +
+        'isUAVConnected isUniformAllowed isVehicleCargo isWalking isWeaponDeployed isWeaponRested ' +
+        'itemCargo items itemsWithMagazines join joinAs joinAsSilent joinSilent joinString kbAddDatabase ' +
+        'kbAddDatabaseTargets kbAddTopic kbHasTopic kbReact kbRemoveTopic kbTell kbWasSaid keyImage ' +
+        'keyName knowsAbout land landAt landResult language laserTarget lbAdd lbClear lbColor lbCurSel ' +
+        'lbData lbDelete lbIsSelected lbPicture lbSelection lbSetColor lbSetCurSel lbSetData lbSetPicture ' +
+        'lbSetPictureColor lbSetPictureColorDisabled lbSetPictureColorSelected lbSetSelectColor ' +
+        'lbSetSelectColorRight lbSetSelected lbSetTooltip lbSetValue lbSize lbSort lbSortByValue lbText ' +
+        'lbValue leader leaderboardDeInit leaderboardGetRows leaderboardInit leaveVehicle libraryCredits ' +
+        'libraryDisclaimers lifeState lightAttachObject lightDetachObject lightIsOn lightnings limitSpeed ' +
+        'linearConversion lineBreak lineIntersects lineIntersectsObjs lineIntersectsSurfaces ' +
+        'lineIntersectsWith linkItem list listObjects ln lnbAddArray lnbAddColumn lnbAddRow lnbClear ' +
+        'lnbColor lnbCurSelRow lnbData lnbDeleteColumn lnbDeleteRow lnbGetColumnsPosition lnbPicture ' +
+        'lnbSetColor lnbSetColumnsPos lnbSetCurSelRow lnbSetData lnbSetPicture lnbSetText lnbSetValue ' +
+        'lnbSize lnbText lnbValue load loadAbs loadBackpack loadFile loadGame loadIdentity loadMagazine ' +
+        'loadOverlay loadStatus loadUniform loadVest local localize locationNull locationPosition lock ' +
+        'lockCameraTo lockCargo lockDriver locked lockedCargo lockedDriver lockedTurret lockIdentity ' +
+        'lockTurret lockWP log logEntities logNetwork logNetworkTerminate lookAt lookAtPos magazineCargo ' +
+        'magazines magazinesAllTurrets magazinesAmmo magazinesAmmoCargo magazinesAmmoFull magazinesDetail ' +
+        'magazinesDetailBackpack magazinesDetailUniform magazinesDetailVest magazinesTurret ' +
+        'magazineTurretAmmo mapAnimAdd mapAnimClear mapAnimCommit mapAnimDone mapCenterOnCamera ' +
+        'mapGridPosition markAsFinishedOnSteam markerAlpha markerBrush markerColor markerDir markerPos ' +
+        'markerShape markerSize markerText markerType max members menuAction menuAdd menuChecked menuClear ' +
+        'menuCollapse menuData menuDelete menuEnable menuEnabled menuExpand menuHover menuPicture ' +
+        'menuSetAction menuSetCheck menuSetData menuSetPicture menuSetValue menuShortcut menuShortcutText ' +
+        'menuSize menuSort menuText menuURL menuValue min mineActive mineDetectedBy missionConfigFile ' +
+        'missionDifficulty missionName missionNamespace missionStart missionVersion mod modelToWorld ' +
+        'modelToWorldVisual modParams moonIntensity moonPhase morale move move3DENCamera moveInAny ' +
+        'moveInCargo moveInCommander moveInDriver moveInGunner moveInTurret moveObjectToEnd moveOut ' +
+        'moveTime moveTo moveToCompleted moveToFailed musicVolume name nameSound nearEntities ' +
+        'nearestBuilding nearestLocation nearestLocations nearestLocationWithDubbing nearestObject ' +
+        'nearestObjects nearestTerrainObjects nearObjects nearObjectsReady nearRoads nearSupplies ' +
+        'nearTargets needReload netId netObjNull newOverlay nextMenuItemIndex nextWeatherChange nMenuItems ' +
+        'not numberToDate objectCurators objectFromNetId objectParent objNull objStatus onBriefingGroup ' +
+        'onBriefingNotes onBriefingPlan onBriefingTeamSwitch onCommandModeChanged onDoubleClick ' +
+        'onEachFrame onGroupIconClick onGroupIconOverEnter onGroupIconOverLeave onHCGroupSelectionChanged ' +
+        'onMapSingleClick onPlayerConnected onPlayerDisconnected onPreloadFinished onPreloadStarted ' +
+        'onShowNewObject onTeamSwitch openCuratorInterface openDLCPage openMap openYoutubeVideo opfor or ' +
+        'orderGetIn overcast overcastForecast owner param params parseNumber parseText parsingNamespace ' +
+        'particlesQuality pi pickWeaponPool pitch pixelGrid pixelGridBase pixelGridNoUIScale pixelH pixelW ' +
+        'playableSlotsNumber playableUnits playAction playActionNow player playerRespawnTime playerSide ' +
+        'playersNumber playGesture playMission playMove playMoveNow playMusic playScriptedMission ' +
+        'playSound playSound3D position positionCameraToWorld posScreenToWorld posWorldToScreen ' +
+        'ppEffectAdjust ppEffectCommit ppEffectCommitted ppEffectCreate ppEffectDestroy ppEffectEnable ' +
+        'ppEffectEnabled ppEffectForceInNVG precision preloadCamera preloadObject preloadSound ' +
+        'preloadTitleObj preloadTitleRsc preprocessFile preprocessFileLineNumbers primaryWeapon ' +
+        'primaryWeaponItems primaryWeaponMagazine priority private processDiaryLink productVersion ' +
+        'profileName profileNamespace profileNameSteam progressLoadingScreen progressPosition ' +
+        'progressSetPosition publicVariable publicVariableClient publicVariableServer pushBack ' +
+        'pushBackUnique putWeaponPool queryItemsPool queryMagazinePool queryWeaponPool rad radioChannelAdd ' +
+        'radioChannelCreate radioChannelRemove radioChannelSetCallSign radioChannelSetLabel radioVolume ' +
+        'rain rainbow random rank rankId rating rectangular registeredTasks registerTask reload ' +
+        'reloadEnabled remoteControl remoteExec remoteExecCall remove3DENConnection remove3DENEventHandler ' +
+        'remove3DENLayer removeAction removeAll3DENEventHandlers removeAllActions removeAllAssignedItems ' +
+        'removeAllContainers removeAllCuratorAddons removeAllCuratorCameraAreas ' +
+        'removeAllCuratorEditingAreas removeAllEventHandlers removeAllHandgunItems removeAllItems ' +
+        'removeAllItemsWithMagazines removeAllMissionEventHandlers removeAllMPEventHandlers ' +
+        'removeAllMusicEventHandlers removeAllOwnedMines removeAllPrimaryWeaponItems removeAllWeapons ' +
+        'removeBackpack removeBackpackGlobal removeCuratorAddons removeCuratorCameraArea ' +
+        'removeCuratorEditableObjects removeCuratorEditingArea removeDrawIcon removeDrawLinks ' +
+        'removeEventHandler removeFromRemainsCollector removeGoggles removeGroupIcon removeHandgunItem ' +
+        'removeHeadgear removeItem removeItemFromBackpack removeItemFromUniform removeItemFromVest ' +
+        'removeItems removeMagazine removeMagazineGlobal removeMagazines removeMagazinesTurret ' +
+        'removeMagazineTurret removeMenuItem removeMissionEventHandler removeMPEventHandler ' +
+        'removeMusicEventHandler removeOwnedMine removePrimaryWeaponItem removeSecondaryWeaponItem ' +
+        'removeSimpleTask removeSwitchableUnit removeTeamMember removeUniform removeVest removeWeapon ' +
+        'removeWeaponGlobal removeWeaponTurret requiredVersion resetCamShake resetSubgroupDirection ' +
+        'resistance resize resources respawnVehicle restartEditorCamera reveal revealMine reverse ' +
+        'reversedMouseY roadAt roadsConnectedTo roleDescription ropeAttachedObjects ropeAttachedTo ' +
+        'ropeAttachEnabled ropeAttachTo ropeCreate ropeCut ropeDestroy ropeDetach ropeEndPosition ' +
+        'ropeLength ropes ropeUnwind ropeUnwound rotorsForcesRTD rotorsRpmRTD round runInitScript ' +
+        'safeZoneH safeZoneW safeZoneWAbs safeZoneX safeZoneXAbs safeZoneY save3DENInventory saveGame ' +
+        'saveIdentity saveJoysticks saveOverlay saveProfileNamespace saveStatus saveVar savingEnabled say ' +
+        'say2D say3D scopeName score scoreSide screenshot screenToWorld scriptDone scriptName scriptNull ' +
+        'scudState secondaryWeapon secondaryWeaponItems secondaryWeaponMagazine select selectBestPlaces ' +
+        'selectDiarySubject selectedEditorObjects selectEditorObject selectionNames selectionPosition ' +
+        'selectLeader selectMax selectMin selectNoPlayer selectPlayer selectRandom selectWeapon ' +
+        'selectWeaponTurret sendAUMessage sendSimpleCommand sendTask sendTaskResult sendUDPMessage ' +
+        'serverCommand serverCommandAvailable serverCommandExecutable serverName serverTime set ' +
+        'set3DENAttribute set3DENAttributes set3DENGrid set3DENIconsVisible set3DENLayer ' +
+        'set3DENLinesVisible set3DENMissionAttributes set3DENModelsVisible set3DENObjectType ' +
+        'set3DENSelected setAccTime setAirportSide setAmmo setAmmoCargo setAnimSpeedCoef setAperture ' +
+        'setApertureNew setArmoryPoints setAttributes setAutonomous setBehaviour setBleedingRemaining ' +
+        'setCameraInterest setCamShakeDefParams setCamShakeParams setCamUseTi setCaptive setCenterOfMass ' +
+        'setCollisionLight setCombatMode setCompassOscillation setCuratorCameraAreaCeiling setCuratorCoef ' +
+        'setCuratorEditingAreaType setCuratorWaypointCost setCurrentChannel setCurrentTask ' +
+        'setCurrentWaypoint setCustomAimCoef setDamage setDammage setDate setDebriefingText ' +
+        'setDefaultCamera setDestination setDetailMapBlendPars setDir setDirection setDrawIcon ' +
+        'setDropInterval setEditorMode setEditorObjectScope setEffectCondition setFace setFaceAnimation ' +
+        'setFatigue setFlagOwner setFlagSide setFlagTexture setFog setFormation setFormationTask ' +
+        'setFormDir setFriend setFromEditor setFSMVariable setFuel setFuelCargo setGroupIcon ' +
+        'setGroupIconParams setGroupIconsSelectable setGroupIconsVisible setGroupId setGroupIdGlobal ' +
+        'setGroupOwner setGusts setHideBehind setHit setHitIndex setHitPointDamage setHorizonParallaxCoef ' +
+        'setHUDMovementLevels setIdentity setImportance setLeader setLightAmbient setLightAttenuation ' +
+        'setLightBrightness setLightColor setLightDayLight setLightFlareMaxDistance setLightFlareSize ' +
+        'setLightIntensity setLightnings setLightUseFlare setLocalWindParams setMagazineTurretAmmo ' +
+        'setMarkerAlpha setMarkerAlphaLocal setMarkerBrush setMarkerBrushLocal setMarkerColor ' +
+        'setMarkerColorLocal setMarkerDir setMarkerDirLocal setMarkerPos setMarkerPosLocal setMarkerShape ' +
+        'setMarkerShapeLocal setMarkerSize setMarkerSizeLocal setMarkerText setMarkerTextLocal ' +
+        'setMarkerType setMarkerTypeLocal setMass setMimic setMousePosition setMusicEffect ' +
+        'setMusicEventHandler setName setNameSound setObjectArguments setObjectMaterial ' +
+        'setObjectMaterialGlobal setObjectProxy setObjectTexture setObjectTextureGlobal ' +
+        'setObjectViewDistance setOvercast setOwner setOxygenRemaining setParticleCircle setParticleClass ' +
+        'setParticleFire setParticleParams setParticleRandom setPilotCameraDirection ' +
+        'setPilotCameraRotation setPilotCameraTarget setPilotLight setPiPEffect setPitch setPlayable ' +
+        'setPlayerRespawnTime setPos setPosASL setPosASL2 setPosASLW setPosATL setPosition setPosWorld ' +
+        'setRadioMsg setRain setRainbow setRandomLip setRank setRectangular setRepairCargo ' +
+        'setShadowDistance setShotParents setSide setSimpleTaskAlwaysVisible setSimpleTaskCustomData ' +
+        'setSimpleTaskDescription setSimpleTaskDestination setSimpleTaskTarget setSimpleTaskType ' +
+        'setSimulWeatherLayers setSize setSkill setSlingLoad setSoundEffect setSpeaker setSpeech ' +
+        'setSpeedMode setStamina setStaminaScheme setStatValue setSuppression setSystemOfUnits ' +
+        'setTargetAge setTaskResult setTaskState setTerrainGrid setText setTimeMultiplier setTitleEffect ' +
+        'setTriggerActivation setTriggerArea setTriggerStatements setTriggerText setTriggerTimeout ' +
+        'setTriggerType setType setUnconscious setUnitAbility setUnitLoadout setUnitPos setUnitPosWeak ' +
+        'setUnitRank setUnitRecoilCoefficient setUnitTrait setUnloadInCombat setUserActionText setVariable ' +
+        'setVectorDir setVectorDirAndUp setVectorUp setVehicleAmmo setVehicleAmmoDef setVehicleArmor ' +
+        'setVehicleCargo setVehicleId setVehicleLock setVehiclePosition setVehicleTiPars setVehicleVarName ' +
+        'setVelocity setVelocityTransformation setViewDistance setVisibleIfTreeCollapsed setWaves ' +
+        'setWaypointBehaviour setWaypointCombatMode setWaypointCompletionRadius setWaypointDescription ' +
+        'setWaypointForceBehaviour setWaypointFormation setWaypointHousePosition setWaypointLoiterRadius ' +
+        'setWaypointLoiterType setWaypointName setWaypointPosition setWaypointScript setWaypointSpeed ' +
+        'setWaypointStatements setWaypointTimeout setWaypointType setWaypointVisible ' +
+        'setWeaponReloadingTime setWind setWindDir setWindForce setWindStr setWPPos show3DIcons showChat ' +
+        'showCinemaBorder showCommandingMenu showCompass showCuratorCompass showGPS showHUD showLegend ' +
+        'showMap shownArtilleryComputer shownChat shownCompass shownCuratorCompass showNewEditorObject ' +
+        'shownGPS shownHUD shownMap shownPad shownRadio shownScoretable shownUAVFeed shownWarrant ' +
+        'shownWatch showPad showRadio showScoretable showSubtitles showUAVFeed showWarrant showWatch ' +
+        'showWaypoint showWaypoints side sideAmbientLife sideChat sideEmpty sideEnemy sideFriendly ' +
+        'sideLogic sideRadio sideUnknown simpleTasks simulationEnabled simulCloudDensity ' +
+        'simulCloudOcclusion simulInClouds simulWeatherSync sin size sizeOf skill skillFinal skipTime ' +
+        'sleep sliderPosition sliderRange sliderSetPosition sliderSetRange sliderSetSpeed sliderSpeed ' +
+        'slingLoadAssistantShown soldierMagazines someAmmo sort soundVolume spawn speaker speed speedMode ' +
+        'splitString sqrt squadParams stance startLoadingScreen step stop stopEngineRTD stopped str ' +
+        'sunOrMoon supportInfo suppressFor surfaceIsWater surfaceNormal surfaceType swimInDepth ' +
+        'switchableUnits switchAction switchCamera switchGesture switchLight switchMove ' +
+        'synchronizedObjects synchronizedTriggers synchronizedWaypoints synchronizeObjectsAdd ' +
+        'synchronizeObjectsRemove synchronizeTrigger synchronizeWaypoint systemChat systemOfUnits tan ' +
+        'targetKnowledge targetsAggregate targetsQuery taskAlwaysVisible taskChildren taskCompleted ' +
+        'taskCustomData taskDescription taskDestination taskHint taskMarkerOffset taskNull taskParent ' +
+        'taskResult taskState taskType teamMember teamMemberNull teamName teams teamSwitch ' +
+        'teamSwitchEnabled teamType terminate terrainIntersect terrainIntersectASL text textLog ' +
+        'textLogFormat tg time timeMultiplier titleCut titleFadeOut titleObj titleRsc titleText toArray ' +
+        'toFixed toLower toString toUpper triggerActivated triggerActivation triggerArea ' +
+        'triggerAttachedVehicle triggerAttachObject triggerAttachVehicle triggerStatements triggerText ' +
+        'triggerTimeout triggerTimeoutCurrent triggerType turretLocal turretOwner turretUnit tvAdd tvClear ' +
+        'tvCollapse tvCount tvCurSel tvData tvDelete tvExpand tvPicture tvSetCurSel tvSetData tvSetPicture ' +
+        'tvSetPictureColor tvSetPictureColorDisabled tvSetPictureColorSelected tvSetPictureRight ' +
+        'tvSetPictureRightColor tvSetPictureRightColorDisabled tvSetPictureRightColorSelected tvSetText ' +
+        'tvSetTooltip tvSetValue tvSort tvSortByValue tvText tvTooltip tvValue type typeName typeOf ' +
+        'UAVControl uiNamespace uiSleep unassignCurator unassignItem unassignTeam unassignVehicle ' +
+        'underwater uniform uniformContainer uniformItems uniformMagazines unitAddons unitAimPosition ' +
+        'unitAimPositionVisual unitBackpack unitIsUAV unitPos unitReady unitRecoilCoefficient units ' +
+        'unitsBelowHeight unlinkItem unlockAchievement unregisterTask updateDrawIcon updateMenuItem ' +
+        'updateObjectTree useAISteeringComponent useAudioTimeForMoves vectorAdd vectorCos ' +
+        'vectorCrossProduct vectorDiff vectorDir vectorDirVisual vectorDistance vectorDistanceSqr ' +
+        'vectorDotProduct vectorFromTo vectorMagnitude vectorMagnitudeSqr vectorMultiply vectorNormalized ' +
+        'vectorUp vectorUpVisual vehicle vehicleCargoEnabled vehicleChat vehicleRadio vehicles ' +
+        'vehicleVarName velocity velocityModelSpace verifySignature vest vestContainer vestItems ' +
+        'vestMagazines viewDistance visibleCompass visibleGPS visibleMap visiblePosition ' +
+        'visiblePositionASL visibleScoretable visibleWatch waves waypointAttachedObject ' +
+        'waypointAttachedVehicle waypointAttachObject waypointAttachVehicle waypointBehaviour ' +
+        'waypointCombatMode waypointCompletionRadius waypointDescription waypointForceBehaviour ' +
+        'waypointFormation waypointHousePosition waypointLoiterRadius waypointLoiterType waypointName ' +
+        'waypointPosition waypoints waypointScript waypointsEnabledUAV waypointShow waypointSpeed ' +
+        'waypointStatements waypointTimeout waypointTimeoutCurrent waypointType waypointVisible ' +
+        'weaponAccessories weaponAccessoriesCargo weaponCargo weaponDirection weaponInertia weaponLowered ' +
+        'weapons weaponsItems weaponsItemsCargo weaponState weaponsTurret weightRTD west WFSideText wind',
       literal:
         'true false nil'
     },
@@ -13793,13 +13457,15 @@ module.exports = function(hljs) {
       hljs.C_LINE_COMMENT_MODE,
       hljs.C_BLOCK_COMMENT_MODE,
       hljs.NUMBER_MODE,
+      VARIABLE,
+      FUNCTION,
       STRINGS,
       CPP.preprocessor
     ],
     illegal: /#/
   };
 };
-},{}],144:[function(require,module,exports){
+},{}],146:[function(require,module,exports){
 module.exports = function(hljs) {
   var COMMENT_MODE = hljs.COMMENT('--', '$');
   return {
@@ -13959,7 +13625,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],145:[function(require,module,exports){
+},{}],147:[function(require,module,exports){
 module.exports = function(hljs) {
   return {
     contains: [
@@ -14042,7 +13708,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],146:[function(require,module,exports){
+},{}],148:[function(require,module,exports){
 module.exports = function(hljs) {
   return {
     aliases: ['do', 'ado'],
@@ -14080,7 +13746,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],147:[function(require,module,exports){
+},{}],149:[function(require,module,exports){
 module.exports = function(hljs) {
   var STEP21_IDENT_RE = '[A-Z_][A-Z0-9_.]*';
   var STEP21_KEYWORDS = {
@@ -14127,7 +13793,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],148:[function(require,module,exports){
+},{}],150:[function(require,module,exports){
 module.exports = function(hljs) {
 
   var VARIABLE = {
@@ -14581,7 +14247,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],149:[function(require,module,exports){
+},{}],151:[function(require,module,exports){
 module.exports = function(hljs) {
   var DETAILS = {
     className: 'string',
@@ -14615,7 +14281,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],150:[function(require,module,exports){
+},{}],152:[function(require,module,exports){
 module.exports = function(hljs) {
   var SWIFT_KEYWORDS = {
       keyword: '__COLUMN__ __FILE__ __FUNCTION__ __LINE__ as as! as? associativity ' +
@@ -14646,7 +14312,7 @@ module.exports = function(hljs) {
 
   var TYPE = {
     className: 'type',
-    begin: '\\b[A-Z][\\w\']*',
+    begin: '\\b[A-Z][\\w\u00C0-\u02B8\']*',
     relevance: 0
   };
   var BLOCK_COMMENT = hljs.COMMENT(
@@ -14713,7 +14379,7 @@ module.exports = function(hljs) {
         end: '\\{',
         excludeEnd: true,
         contains: [
-          hljs.inherit(hljs.TITLE_MODE, {begin: /[A-Za-z$_][0-9A-Za-z$_]*/})
+          hljs.inherit(hljs.TITLE_MODE, {begin: /[A-Za-z$_][\u00C0-\u02B80-9A-Za-z$_]*/})
         ]
       },
       {
@@ -14732,7 +14398,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],151:[function(require,module,exports){
+},{}],153:[function(require,module,exports){
 module.exports = function(hljs) {
 
   var COMMENT = {
@@ -14776,7 +14442,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],152:[function(require,module,exports){
+},{}],154:[function(require,module,exports){
 module.exports = function(hljs) {
   return {
     case_insensitive: true,
@@ -14812,7 +14478,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],153:[function(require,module,exports){
+},{}],155:[function(require,module,exports){
 module.exports = function(hljs) {
   return {
     aliases: ['tk'],
@@ -14873,7 +14539,7 @@ module.exports = function(hljs) {
     ]
   }
 };
-},{}],154:[function(require,module,exports){
+},{}],156:[function(require,module,exports){
 module.exports = function(hljs) {
   var COMMAND = {
     className: 'tag',
@@ -14935,7 +14601,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],155:[function(require,module,exports){
+},{}],157:[function(require,module,exports){
 module.exports = function(hljs) {
   var BUILT_IN_TYPES = 'bool byte i16 i32 i64 double string binary';
   return {
@@ -14970,7 +14636,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],156:[function(require,module,exports){
+},{}],158:[function(require,module,exports){
 module.exports = function(hljs) {
   var TPID = {
     className: 'number',
@@ -15054,7 +14720,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],157:[function(require,module,exports){
+},{}],159:[function(require,module,exports){
 module.exports = function(hljs) {
   var PARAMS = {
     className: 'params',
@@ -15120,7 +14786,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],158:[function(require,module,exports){
+},{}],160:[function(require,module,exports){
 module.exports = function(hljs) {
   var KEYWORDS = {
     keyword:
@@ -15206,7 +14872,22 @@ module.exports = function(hljs) {
         relevance: 0 // () => {} is more typical in TypeScript
       },
       {
-        beginKeywords: 'constructor', end: /\{/, excludeEnd: true
+        beginKeywords: 'constructor', end: /\{/, excludeEnd: true,
+        contains: [
+          'self',
+          {
+            className: 'params',
+            begin: /\(/, end: /\)/,
+            excludeBegin: true,
+            excludeEnd: true,
+            keywords: KEYWORDS,
+            contains: [
+              hljs.C_LINE_COMMENT_MODE,
+              hljs.C_BLOCK_COMMENT_MODE
+            ],
+            illegal: /["'\(]/
+          }
+        ]
       },
       { // prevent references like module.id from being higlighted as module definitions
         begin: /module\./,
@@ -15225,11 +14906,14 @@ module.exports = function(hljs) {
       },
       {
         begin: '\\.' + hljs.IDENT_RE, relevance: 0 // hack: prevents detection of keywords after dots
+      },
+      {
+        className: 'meta', begin: '@[A-Za-z]+'
       }
     ]
   };
 };
-},{}],159:[function(require,module,exports){
+},{}],161:[function(require,module,exports){
 module.exports = function(hljs) {
   return {
     keywords: {
@@ -15279,7 +14963,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],160:[function(require,module,exports){
+},{}],162:[function(require,module,exports){
 module.exports = function(hljs) {
   return {
     aliases: ['vb'],
@@ -15335,7 +15019,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],161:[function(require,module,exports){
+},{}],163:[function(require,module,exports){
 module.exports = function(hljs) {
   return {
     subLanguage: 'xml',
@@ -15347,7 +15031,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],162:[function(require,module,exports){
+},{}],164:[function(require,module,exports){
 module.exports = function(hljs) {
   return {
     aliases: ['vbs'],
@@ -15386,7 +15070,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],163:[function(require,module,exports){
+},{}],165:[function(require,module,exports){
 module.exports = function(hljs) {
   var SV_KEYWORDS = {
     keyword:
@@ -15485,7 +15169,7 @@ module.exports = function(hljs) {
     ]
   }; // return
 };
-},{}],164:[function(require,module,exports){
+},{}],166:[function(require,module,exports){
 module.exports = function(hljs) {
   // Regular expression for VHDL numeric literals.
 
@@ -15546,7 +15230,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],165:[function(require,module,exports){
+},{}],167:[function(require,module,exports){
 module.exports = function(hljs) {
   return {
     lexemes: /[!#@\w]+/,
@@ -15652,7 +15336,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],166:[function(require,module,exports){
+},{}],168:[function(require,module,exports){
 module.exports = function(hljs) {
   return {
     case_insensitive: true,
@@ -15788,7 +15472,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],167:[function(require,module,exports){
+},{}],169:[function(require,module,exports){
 module.exports = function(hljs) {
   var BUILTIN_MODULES =
     'ObjectLoader Animate MovieCredits Slides Filters Shading Materials LensFlare Mapping VLCAudioVideo ' +
@@ -15861,7 +15545,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],168:[function(require,module,exports){
+},{}],170:[function(require,module,exports){
 module.exports = function(hljs) {
   var XML_IDENT_RE = '[A-Za-z0-9\\._:-]+';
   var TAG_INTERNALS = {
@@ -15964,7 +15648,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],169:[function(require,module,exports){
+},{}],171:[function(require,module,exports){
 module.exports = function(hljs) {
   var KEYWORDS = 'for let if while then else return where group by xquery encoding version' +
     'module namespace boundary-space preserve strip default collation base-uri ordering' +
@@ -16035,7 +15719,7 @@ module.exports = function(hljs) {
     contains: CONTAINS
   };
 };
-},{}],170:[function(require,module,exports){
+},{}],172:[function(require,module,exports){
 module.exports = function(hljs) {
   var LITERALS = {literal: '{ } true false yes no Yes No True False null'};
 
@@ -16119,7 +15803,7 @@ module.exports = function(hljs) {
     keywords: LITERALS
   };
 };
-},{}],171:[function(require,module,exports){
+},{}],173:[function(require,module,exports){
 module.exports = function(hljs) {
   var STRING = {
     className: 'string',
@@ -16226,7 +15910,7 @@ module.exports = function(hljs) {
     ]
   };
 };
-},{}],172:[function(require,module,exports){
+},{}],174:[function(require,module,exports){
 /**
  * @file debug.js
  * @summary Debug panels for javascript
@@ -16268,6 +15952,10 @@ class Debug
         window.addEventListener('resize', this.resize.bind(this));
         window.addEventListener('error', this._error.bind(this));
         document.addEventListener('keypress', this._keypress.bind(this));
+        Debug.body = document.createElement('div');
+        Debug.body.style.position = 'absolute';
+        Debug.body.id = 'yy-debug';
+        document.body.appendChild(Debug.body);
         return this.add('debug', options);
     }
 
@@ -16300,7 +15988,7 @@ class Debug
         const div = (typeof name === 'string') ? this.get(name) : name;
         const side = div.side;
         delete side.panels[div.name];
-        document.body.removeChild(div);
+        Debug.body.removeChild(div);
         localStorage.setItem(side.dir + '-' + div.name, false);
         this._resizeSide(side);
     }
@@ -16322,7 +16010,7 @@ class Debug
     {
         options = options || {};
         const div = document.createElement('div');
-        document.body.appendChild(div);
+        Debug.body.appendChild(div);
         div.name = name;
         div.options = options;
         if (!this.defaultDiv || options.default)
@@ -16384,7 +16072,7 @@ class Debug
         div.height = options.height || 25;
         div.style.width = div.width + 'px';
         div.style.height = div.height + 'px';
-        document.body.appendChild(div);
+        Debug.body.appendChild(div);
         div.name = name;
         div.options = options;
         const side = this._getSide(options);
@@ -16462,7 +16150,7 @@ class Debug
     {
         options = options || {};
         var div = document.createElement('div');
-        document.body.appendChild(div);
+        Debug.body.appendChild(div);
         div.type = 'link';
         div.name = name;
         div.innerHTML = '<a style="color: white" target="_blank" href="' + link + '">' + name + '</a>';
@@ -16502,6 +16190,7 @@ class Debug
      * @param {object} [options]
      * @param {string} [options.color] background color for text (in CSS)
      * @param {string} [options.name] of panel
+     * @param {boolean} [options.debug] invoke debugger from javascript
      * @param {HTMLElement} [options.panel] returned from this.Add()
      * @param {boolean} [options.console=false] print to console instead of panel (useful for fast updating messages)
      */
@@ -16549,12 +16238,17 @@ class Debug
             this.defaultDiv.expanded = true;
             this.resize();
         }
+        if (options.debug)
+        {
+            debugger;
+        }
     }
 
     /**
      * replaces all text in the panel
      * @param {string[]|...string} text - may be an array or you can include multiple strings: text1, text2, text3, [options]
      * @param {string} [options.name] of panel, defaults to defaultDiv
+     * @param {boolean} [options.debug] invoke debugger from javascript
      * @param {HTMLElement} [options.panel] returned from this.Add()
      */
     one()
@@ -16585,6 +16279,10 @@ class Debug
         }
         html += '</span>';
         div.innerHTML = html;
+        if (options.debug)
+        {
+            debugger;
+        }
     }
 
     /**
@@ -16791,7 +16489,7 @@ class Debug
         }
         var div = document.createElement('div');
         div.options = {};
-        document.body.appendChild(div);
+        Debug.body.appendChild(div);
         var s = div.style;
         div.side = side;
         if (this._isLeft(side))
@@ -17095,4 +16793,535 @@ module.exports = new Debug();
 
 // for eslint
 /* global document, localStorage, window, console */
-},{}]},{},[2,3]);
+},{}],175:[function(require,module,exports){
+/**
+ * @file update.js
+ * @author David Figatner
+ * @license MIT
+ * @copyright YOPEY YOPEY LLC 2016
+ * {@link https://github.com/davidfig/update}
+ */
+
+// placeholder for yy-debug ({@link http://github.com/davidfig/debug})
+let Debug;
+
+/**
+ * @description
+ * update loop API for javascript apps
+ * @example
+ * const Update = require('yy-update');
+ *
+ * // initialize update loop
+ * Update.init();
+ *
+ * // add a call to testPI every 100 ms
+ * Update.add(testPI, {time: 100});
+ *
+ * // add a call to testDelay
+ * Update.add(testDelay);
+ *
+ * // start update loop
+ * Update.update();
+ *
+ * function testPI()
+ * {
+ *    var test = Math.pow(Math.PI, 100);
+ * }
+ *
+ * function testDelay()
+ * {
+ *    var test = 0;
+ *    for (var i = 0; i < 100000; i++)
+ *    {
+ *        test += i * 3;
+ *    }
+ * }
+ */
+class Update
+{
+    constructor()
+    {
+        this.list = [];
+        this.FPS = 60;
+        this.pause = false;
+        this.pauseRegistrations = [];
+        this.pauseElapsed = 0;
+
+        this.startTime = 0;
+        this.frameNumber = 0;
+        this.lastUpdate = 0;
+        this.lastFPS = '--';
+
+        this.tolerance = 1;
+
+        this.maxChange = 100;
+
+        this.panels = {fps: null, meter: null, percent: null};
+        this.percentageList = [];
+
+        // this is the number of entries to use in a rolling average to smooth the debug percentages
+        this.rollingAverage = 500;
+    }
+
+    /**
+     * must call this.init before using Update
+     * @param {object} [options]
+     * @param {object} [options.Debug] pass Debug from github.com/davidfig/debug
+     * @param {boolean|string} [options.count] - show debug counts (can supply side for panel, e.g., 'topleft')
+     * @param {boolean|string} [options.percent] - show debug percentage
+     * @param {boolean|string} [options.FPS] - show debug FPS
+     * @param {function} [options.onLoop] call at end of update loop
+     */
+    init(options)
+    {
+        options = options || {};
+        this.checkVisibility();
+        this.FPSActual = 1000 / this.FPS;
+        if (options.debug)
+        {
+            Debug = options.debug;
+            this.debug = {count: options.count, percent: options.percent, FPS: options.FPS};
+            this._debugInit();
+        }
+        this.onLoop = options.onLoop;
+    }
+
+    /**
+     * register functions to call after Update pauses or resumes
+     * @param {Function} pause
+     * @param {Function} resume
+     */
+    registerPause(pause, resume)
+    {
+        this.pauseRegistrations.push({ pause: pause, resume: resume});
+    }
+
+    /**
+     * pauses all updates
+     */
+    pauseGame()
+    {
+        if (this.pause !== true)
+        {
+            this.pause = true;
+            this.pauseElapsed = performance.now() - this.lastUpdate;
+            this.updateOff = false;
+            if (this.debug)
+            {
+                this._debugPause();
+            }
+            for (var i = 0; i < this.pauseRegistrations.length; i++)
+            {
+                this.pauseRegistrations[i].pause();
+            }
+        }
+    }
+
+    /**
+     * resumes all updates
+     */
+    resumeGame()
+    {
+        if (this.pause === true)
+        {
+            this.pause = false;
+            this.lastUpdate = performance.now() - this.pauseElapsed;
+            if (Debug && this.debug && this.debug.FPS)
+            {
+                this.startTime = 0;
+                this.frameNumber = 0;
+                this.lastUpdate = 0;
+                this.lastFPS = '--';
+            }
+            for (var i = 0; i < this.pauseRegistrations.length; i++)
+            {
+                this.pauseRegistrations[i].resume();
+            }
+            if (this.updateOff === true)
+            {
+                this.update();
+            }
+        }
+    }
+
+    /**
+     * loops through all updates
+     * @param {number} elapsed in milliseconds
+     * @private
+     */
+    _updateAll(elapsed)
+    {
+        this.updateRemove = [];
+        var i = 0, _i = this.list.length;
+        var other = 0, count = 0;
+        while (i < _i)
+        {
+            var update = this.list[i++];
+            if (update.pause)
+            {
+                continue;
+            }
+            if (update.duration !== 0)
+            {
+                update.elapsed += elapsed;
+                if (update.elapsed < update.duration)
+                {
+                    if (this.debug && this.debug.percent && update.options.percent)
+                    {
+                        var change = this.percentageList[update.options.percent];
+                        change.amounts[change.current++] = 0;
+                        if (change.current === this.rollingAverage)
+                        {
+                            change.current = 0;
+                        }
+                    }
+                    continue;
+                }
+                else
+                {
+                    update.elapsed = 0;
+                }
+            }
+            var start, result;
+            if (this.debug && this.debug.percent)
+            {
+                start = performance.now();
+                result = update.callback(elapsed, update.options);
+                var current = performance.now() - start;
+                if (update.options.percent)
+                {
+                    var change = this.percentageList[update.options.percent];
+                    change.amounts[change.current++] = current;
+                    if (change.current === this.rollingAverage)
+                    {
+                        change.current = 0;
+                    }
+                }
+                else
+                {
+                    other += current;
+                }
+            }
+            else
+            {
+                result = update.callback(elapsed, update.options);
+            }
+            if (update.once || result)
+            {
+                i--;
+                _i--;
+                this.list.splice(i, 1);
+            }
+            count++;
+        }
+        if (this.debug)
+        {
+            if (this.debug.count && this.lastCount !== count)
+            {
+                Debug.one(count + ' updates', {panel: this.panels.count});
+                this.lastCount = count;
+            }
+            if (this.debug.percent)
+            {
+                this._debugPercent(other);
+            }
+        }
+        while (this.updateRemove.length)
+        {
+            this._remove(this.updateRemove.pop());
+        }
+        this.updateRemove = null;
+    }
+
+    /**
+     * adds a function to the update loop
+     * @param {Function} funct
+     * @param {object} [options]
+     * @param {number} [options.time=0] in milliseconds to call this function
+     * @param {number} [options.FPS] - this replaces options.time and calls the function at the desired FPS
+     * @param {boolean} [options.once=false] - call only once and then remove from update queue
+     * @param {string} [options.percent] - name to track the percentage in the debug panel
+     */
+    add(funct, options)
+    {
+        options = options || {};
+        var time = options.time || (options.FPS ? 1000 / options.FPS : 0);
+        var update = {callback: funct, options: options, duration: time, elapsed: 0, once: options.once, pause: false};
+        this.list.push(update);
+        if (this.debug && options.percent)
+        {
+            this.percentageList[options.percent] = {current: 0, amounts: []};
+            var test = '';
+            for (var key in this.percentageList)
+            {
+                test += key + ': --%<br>';
+            }
+            Debug.one(test, {panel: this.panels.percent});
+            Debug.resize();
+        }
+        return update;
+    }
+
+    clear()
+    {
+        this.list = [];
+        if (this.debug && this.debug.percent)
+        {
+            this.percentageList = {};
+            this.percentageList['Other'] = {current: 0, amounts: []};
+            Debug.resize();
+        }
+    }
+
+    /**
+     * removes an update from the loop
+     * @param {object} update - object returned by this.add()
+     */
+    remove(update)
+    {
+        if (update)
+        {
+            if (this.updateRemove)
+            {
+                this.updateRemove.push(update);
+            }
+            else
+            {
+                this._remove(update);
+            }
+        }
+    }
+
+    /**
+     * removes the update from the loop
+     * this does not check whether the update loop is active; use this.remove() instead
+     * @param {object} update - object returned by this.add()
+     * @private
+     */
+    _remove(update)
+    {
+        var index = this.list.indexOf(update);
+        if (index !== -1)
+        {
+            this.list.splice(index, 1);
+        }
+    }
+
+    /**
+     * starts the update loop
+     */
+    update()
+    {
+        if (this.pause === true)
+        {
+            this.updateOff = true;
+            return;
+        }
+        var current = performance.now();
+        var elapsed;
+        if (this.lastUpdate === 0)
+        {
+            elapsed = 0;
+        }
+        else
+        {
+            elapsed = current - this.lastUpdate;
+            elapsed = elapsed > this.maxChange ? this.maxChange : elapsed;
+        }
+        if (this.FPS === 60 || elapsed === 0 || elapsed >= this.FPSActual)
+        {
+            this._updateAll(elapsed);
+            this.lastUpdate = current;
+            if (this.debug && this.debug.FPS)
+            {
+                this._debugUpdate(current);
+            }
+        }
+        if (this.onLoop)
+        {
+            this.onLoop();
+        }
+        if (typeof requestAnimationFrame === 'function')
+        {
+            requestAnimationFrame(this.update.bind(this));
+        }
+        else
+        {
+            setTimeout(this.update.bind(this), this.FPSActual);
+        }
+    }
+
+    /**
+     * Starts a page visibility event listener running, or window.onpagehide/onpageshow if not supported by the browser. Also listens for window.onblur and window.onfocus.
+     * based on Phaser: https://github.com/photonstorm/phaser (MIT license)
+     * @private
+     */
+    checkVisibility()
+    {
+        var hiddenVar;
+        if (document.webkitHidden !== undefined)
+        {
+            hiddenVar = 'webkitvisibilitychange';
+        }
+        else if (document.mozHidden !== undefined)
+        {
+            hiddenVar = 'mozvisibilitychange';
+        }
+        else if (document.msHidden !== undefined)
+        {
+            hiddenVar = 'msvisibilitychange';
+        }
+        else if (document.hidden !== undefined)
+        {
+            hiddenVar = 'visibilitychange';
+        }
+        else
+        {
+            hiddenVar = null;
+        }
+
+        //  Does browser support it? If not (like in IE9 or old Android) we need to fall back to blur/focus
+        if (hiddenVar)
+        {
+            document.addEventListener(hiddenVar, this.visibilityChange.bind(this), false);
+        }
+
+        window.onblur = this.visibilityChange.bind(this);
+        window.onfocus = this.visibilityChange.bind(this);
+
+        window.onpagehide = this.visibilityChange.bind(this);
+        window.onpageshow = this.visibilityChange.bind(this);
+    }
+
+    /**
+     * Callback for checkVisibility()
+     * based on Phaser: https://github.com/photonstorm/phaser (MIT license)
+     * @private
+     */
+    visibilityChange(event)
+    {
+        if (event.type === 'pagehide' || event.type === 'blur' || event.type === 'pageshow' || event.type === 'focus')
+        {
+            if (event.type === 'pagehide' || event.type === 'blur')
+            {
+                this.pauseGame();
+            }
+            else if (event.type === 'pageshow' || event.type === 'focus')
+            {
+                this.resumeGame(event);
+            }
+            return;
+        }
+
+        if (document.hidden || document.mozHidden || document.msHidden || document.webkitHidden || event.type === 'pause')
+        {
+            this.pauseGame(event);
+        }
+    }
+
+    /**
+     * adds debug panels (uses github.com/davidfig/debug)
+     * @private
+     */
+    _debugInit()
+    {
+        if (this.debug.FPS)
+        {
+            this.panels.fps = Debug.add('FPS', {text: '-- FPS'});
+            this.panels.meter = Debug.addMeter('panel');
+        }
+        if (this.debug.count)
+        {
+            this.panels.count = Debug.add('Updates', {text: '0 updates'});
+        }
+        if (this.debug.percent)
+        {
+            this.panels.percent = Debug.add('percentages', {style: {textAlign: 'right'}});
+            this.percentageList['Other'] = {current: 0, amounts: []};
+        }
+    }
+
+    /**
+     * pause debug
+     * @private
+     */
+    _debugPause()
+    {
+        if (this.debug.FPS)
+        {
+            Debug.one('-- FPS', {panel: this.panels.fps});
+        }
+    }
+
+    /**
+     * update debug panels
+     * @param {number} current time
+     * @private
+     */
+    _debugUpdate(current)
+    {
+        this.frameNumber++;
+        var currentTime = performance.now() - this.startTime;
+
+        // skip the first half second to get rid of garbage
+        if (currentTime > 500)
+        {
+            if (this.startTime !== 0)
+            {
+                this.lastFPS = Math.floor(this.frameNumber / (currentTime / 1000));
+                if (this.lastFPS >= 60 - this.tolerance && this.lastFPS <= 60 + this.tolerance)
+                {
+                    this.lastFPS = 60;
+                }
+            }
+            this.startTime = performance.now();
+            this.frameNumber = 0;
+        }
+        Debug.one(this.lastFPS + ' FPS', {panel: this.panels.fps});
+        var time = performance.now() - current;
+
+        // 16.7 is hard coded for 60 FPS. Probably should figure out the real amount for the current FPS
+        var expected = (16.7 - time) / 16.7;
+        Debug.meter(expected, {panel: this.panels.meter});
+    }
+
+    /**
+     * update percentage panel
+     * @param {number} other time
+     * @private
+     */
+    _debugPercent(other)
+    {
+        var change = this.percentageList['Other'];
+        change.amounts[change.current++] = other;
+        change.current %= this.rollingAverage;
+        var updates = [], all = 0;
+        for (var name in this.percentageList)
+        {
+            var change = this.percentageList[name];
+            var total = 0;
+            for (var i = 0; i < change.amounts.length; i++)
+            {
+                total += change.amounts[i];
+            }
+            total /= change.amounts.length;
+            all += total;
+            updates.push({name: name, total: total});
+        }
+        var result = '';
+        for (var i = 1; i < updates.length; i++)
+        {
+            var update = updates[i];
+            result += update.name + ': ' + Math.round(update.total / all * 100) + '%<br>';
+        }
+        var update = updates[0];
+        result += update.name + ': ' + (all === 0 ? '100' : Math.round(update.total / all * 100)) + '%<br>';
+        Debug.one(result, {panel: this.panels.percent});
+    }
+}
+
+module.exports = new Update();
+
+// for eslint
+/* globals performance, requestAnimationFrame, setTimeout, window, document */
+},{}]},{},[2,1]);
