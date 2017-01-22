@@ -9,62 +9,41 @@ https://davidfig.github.io/update/
     npm install yy-update
 
 # API Reference
-<a name="Update"></a>
+## Functions
 
-## Update
-**Kind**: global class  
+<dl>
+<dt><a href="#init">init([options])</a></dt>
+<dd><p>must call init() before using Update</p>
+</dd>
+<dt><a href="#registerPause">registerPause(pause, resume)</a></dt>
+<dd><p>register functions to call after Update pauses or resumes</p>
+</dd>
+<dt><a href="#pauseGame">pauseGame()</a></dt>
+<dd><p>pauses all updates</p>
+</dd>
+<dt><a href="#resumeGame">resumeGame()</a></dt>
+<dd><p>resumes all updates</p>
+</dd>
+<dt><a href="#add">add(funct, [options])</a></dt>
+<dd><p>adds a function to the update loop</p>
+</dd>
+<dt><a href="#clear">clear()</a></dt>
+<dd><p>removes all updates and clears the percentage list</p>
+</dd>
+<dt><a href="#remove">remove(update)</a></dt>
+<dd><p>removes an update from the loop</p>
+</dd>
+<dt><a href="#update">update()</a></dt>
+<dd><p>starts the update loop</p>
+</dd>
+</dl>
 
-* [Update](#Update)
-    * [new Update()](#new_Update_new)
-    * [.init([options])](#Update+init)
-    * [.registerPause(pause, resume)](#Update+registerPause)
-    * [.pauseGame()](#Update+pauseGame)
-    * [.resumeGame()](#Update+resumeGame)
-    * [.add(funct, [options])](#Update+add)
-    * [.remove(update)](#Update+remove)
-    * [.update()](#Update+update)
+<a name="init"></a>
 
-<a name="new_Update_new"></a>
+## init([options])
+must call init() before using Update
 
-### new Update()
-update loop API for javascript apps
-
-**Example**  
-```js
-const Update = require('yy-update');
-
-// initialize update loop
-Update.init();
-
-// add a call to testPI every 100 ms
-Update.add(testPI, {time: 100});
-
-// add a call to testDelay
-Update.add(testDelay);
-
-// start update loop
-Update.update();
-
-function testPI()
-{
-   var test = Math.pow(Math.PI, 100);
-}
-
-function testDelay()
-{
-   var test = 0;
-   for (var i = 0; i < 100000; i++)
-   {
-       test += i * 3;
-   }
-}
-```
-<a name="Update+init"></a>
-
-### update.init([options])
-must call this.init before using Update
-
-**Kind**: instance method of <code>[Update](#Update)</code>  
+**Kind**: global function  
 
 | Param | Type | Description |
 | --- | --- | --- |
@@ -73,37 +52,38 @@ must call this.init before using Update
 | [options.count] | <code>boolean</code> &#124; <code>string</code> | show debug counts (can supply side for panel, e.g., 'topleft') |
 | [options.percent] | <code>boolean</code> &#124; <code>string</code> | show debug percentage |
 | [options.FPS] | <code>boolean</code> &#124; <code>string</code> | show debug FPS |
+| [options.onLoop] | <code>function</code> | call at end of update loop |
 
-<a name="Update+registerPause"></a>
+<a name="registerPause"></a>
 
-### update.registerPause(pause, resume)
+## registerPause(pause, resume)
 register functions to call after Update pauses or resumes
 
-**Kind**: instance method of <code>[Update](#Update)</code>  
+**Kind**: global function  
 
 | Param | Type |
 | --- | --- |
 | pause | <code>function</code> | 
 | resume | <code>function</code> | 
 
-<a name="Update+pauseGame"></a>
+<a name="pauseGame"></a>
 
-### update.pauseGame()
+## pauseGame()
 pauses all updates
 
-**Kind**: instance method of <code>[Update](#Update)</code>  
-<a name="Update+resumeGame"></a>
+**Kind**: global function  
+<a name="resumeGame"></a>
 
-### update.resumeGame()
+## resumeGame()
 resumes all updates
 
-**Kind**: instance method of <code>[Update](#Update)</code>  
-<a name="Update+add"></a>
+**Kind**: global function  
+<a name="add"></a>
 
-### update.add(funct, [options])
+## add(funct, [options])
 adds a function to the update loop
 
-**Kind**: instance method of <code>[Update](#Update)</code>  
+**Kind**: global function  
 
 | Param | Type | Default | Description |
 | --- | --- | --- | --- |
@@ -114,23 +94,30 @@ adds a function to the update loop
 | [options.once] | <code>boolean</code> | <code>false</code> | call only once and then remove from update queue |
 | [options.percent] | <code>string</code> |  | name to track the percentage in the debug panel |
 
-<a name="Update+remove"></a>
+<a name="clear"></a>
 
-### update.remove(update)
+## clear()
+removes all updates and clears the percentage list
+
+**Kind**: global function  
+<a name="remove"></a>
+
+## remove(update)
 removes an update from the loop
 
-**Kind**: instance method of <code>[Update](#Update)</code>  
+**Kind**: global function  
 
 | Param | Type | Description |
 | --- | --- | --- |
-| update | <code>object</code> | object returned by this.add() |
+| update | <code>object</code> | object returned by add() |
 
-<a name="Update+update"></a>
+<a name="update"></a>
 
-### update.update()
+## update()
 starts the update loop
 
-**Kind**: instance method of <code>[Update](#Update)</code>  
+**Kind**: global function  
+
 * * *
 
-Copyright (c) 2016 YOPEY YOPEY LLC - MIT License - Documented by [jsdoc-to-markdown](https://github.com/75lb/jsdoc-to-markdown)
+Copyright (c) 2017 YOPEY YOPEY LLC - MIT License - Documented by [jsdoc-to-markdown](https://github.com/75lb/jsdoc-to-markdown)
