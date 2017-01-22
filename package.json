@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "test": "live-server",
-    "install": "browserify *.js -u index.compiled.js > index.compiled.js",
+    "install": "webpack --config webpack.config.js",
     "watch": "watchify index.js highlight.js -vo index.compiled.js"
   },
   "repository": {

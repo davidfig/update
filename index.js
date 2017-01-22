@@ -81,7 +81,7 @@ document.body.addEventListener('keypress',
     }
 );
 
-Debug.log('______Tests______<br>Press A to add an update<br>Press B to add/remove the random update during the update loop<br>Press C to clear the Random updates')
+Debug.log('______Tests______<br>Press A to add an update<br>Press B to add/remove the random update during the update loop<br>Press C to clear the Random updates');
 
 // shows the code in the demo
 window.onload = function()
@@ -93,7 +93,7 @@ window.onload = function()
         var code = document.getElementById('code');
         code.innerHTML = client.responseText;
         require('highlight.js').highlightBlock(code);
-    }
+    };
     client.send();
 };
 
