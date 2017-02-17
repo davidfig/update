@@ -46,7 +46,7 @@ let _onLoop;
  * @param {boolean|string} [options.FPS] - show debug FPS
  * @param {function} [options.onLoop] call at end of update loop
  */
-export function init(options)
+function init(options)
 {
     options = options || {};
     window.addEventListener('blur', pauseGame);
@@ -65,7 +65,7 @@ export function init(options)
  * @param {Function} pause
  * @param {Function} resume
  */
-export function registerPause(pause, resume)
+function registerPause(pause, resume)
 {
     _pauseRegistrations.push({ pause: pause, resume: resume});
 }
@@ -73,7 +73,7 @@ export function registerPause(pause, resume)
 /**
  * pauses all updates
  */
-export function pauseGame()
+function pauseGame()
 {
     if (_pause !== true)
     {
@@ -94,7 +94,7 @@ export function pauseGame()
 /**
  * resumes all updates
  */
-export function resumeGame()
+function resumeGame()
 {
     if (_pause === true)
     {
@@ -216,7 +216,7 @@ function _updateAll(elapsed)
  * @param {boolean} [options.once=false] - call only once and then remove from update queue
  * @param {string} [options.percent] - name to track the percentage in the debug panel
  */
-export function add(funct, options)
+function add(funct, options)
 {
     options = options || {};
     const time = options.time || (options.FPS ? 1000 / options.FPS : 0);
@@ -239,7 +239,7 @@ export function add(funct, options)
 /**
  * removes all updates and clears the percentage list
  */
-export function clear()
+function clear()
 {
     _list = [];
     if (_debug && _debug.percent)
@@ -254,7 +254,7 @@ export function clear()
  * removes an update from the loop
  * @param {object} update - object returned by add()
  */
-export function remove(update)
+function remove(update)
 {
     if (update)
     {
@@ -287,7 +287,7 @@ function _remove(update)
 /**
  * starts the update loop
  */
-export function update()
+function update()
 {
     if (_pause === true)
     {
@@ -415,5 +415,16 @@ function _debugPercent(other)
     result += update.name + ': ' + (all === 0 ? '100' : Math.round(update.total / all * 100)) + '%<br>';
     Debug.one(result, {panel: _panels.percent});
 }
+
+module.exports = {
+    init,
+    registerPause,
+    pauseGame,
+    resumeGame,
+    add,
+    clear,
+    remove,
+    update
+};
 
 /* globals performance, requestAnimationFrame */
