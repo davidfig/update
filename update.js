@@ -45,12 +45,16 @@ let _onLoop;
  * @param {boolean|string} [options.percent] - show debug percentage
  * @param {boolean|string} [options.FPS] - show debug FPS
  * @param {function} [options.onLoop] call at end of update loop
+ * @param {boolean} [options.noPause] do not pause update loop when window loses focus
  */
 function init(options)
 {
     options = options || {};
-    window.addEventListener('blur', pauseGame);
-    window.addEventListener('focus', resumeGame);
+    if (!options.noPause)
+    {
+        window.addEventListener('blur', pauseGame);
+        window.addEventListener('focus', resumeGame);
+    }
     if (options.debug)
     {
         Debug = options.debug;
